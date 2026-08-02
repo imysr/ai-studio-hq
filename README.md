@@ -136,31 +136,30 @@ Mission History
 
 ---
 
-# 📂 Project Structure
+```text
 ai-studio-hq
 
 ├── app
-│ ├── core
-│ ├── missions
-│ ├── hq
-│ └── agents
-
+│   ├── core
+│   ├── missions
+│   ├── hq
+│   └── agents
+│
 ├── data
-│ ├── agents.ts
-│ ├── missions.ts
-│ ├── tasks.ts
-│ └── agentState.ts
-
+│   ├── agents.ts
+│   ├── missions.ts
+│   ├── tasks.ts
+│   └── agentState.ts
+│
 ├── lib
-│ ├── aiManager.ts
-│ ├── aiScheduler.ts
-│ ├── workEngine.ts
-│ ├── agentMemory.ts
-│ └── activityMemory.ts
-
+│   ├── aiManager.ts
+│   ├── aiScheduler.ts
+│   ├── workEngine.ts
+│   ├── agentMemory.ts
+│   └── activityMemory.ts
+│
 └── public
-
----
+```
 
 # 🗺️ Development Roadmap
 
