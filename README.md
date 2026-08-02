@@ -1,36 +1,208 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧠 AI Studio HQ
 
-## Getting Started
+> An AI-powered company simulation platform where autonomous AI agents manage missions, tasks, and workflows.
 
-First, run the development server:
+![AI Studio HQ](https://img.shields.io/badge/Project-AI%20Studio%20HQ-blue)
+![Next.js](https://img.shields.io/badge/Next.js-15-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-06B6D4)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🌐 Overview
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+AI Studio HQ is a simulation platform that explores the concept of an AI-powered company.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Instead of a traditional application where humans control every action, AI Studio creates a virtual organization where different AI agents have their own roles, responsibilities, tasks, and memory systems.
 
-## Learn More
+The goal is to simulate how an AI workforce could collaborate to complete projects.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 🏢 AI Company Architecture
+             CEO
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+              ↓
 
-## Deploy on Vercel
+      🧠 AI Manager (Valid)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+              ↓
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+      Mission Planning System
+
+              ↓
+
+       AI Scheduler Engine
+
+              ↓
+
+    ┌─────────┼─────────┐
+    ↓         ↓         ↓
+
+CodeBot    Pixel     Atlas
+              ↓
+Software UI/UX Business
+Engineer Designer Analyst
+             ↓
+
+      Agent Memory System
+
+              ↓
+
+        AI Core Dashboard
+        
+---
+
+# 🤖 AI Employees
+
+| Agent | Role | Responsibility |
+|---|---|---|
+| 🧑‍💼 Valid | CEO Assistant | Plans missions and coordinates AI workers |
+| 💻 CodeBot | Software Engineer | Develops applications and technical systems |
+| 🎨 Pixel | UI/UX Designer | Designs interfaces and user experiences |
+| 📚 Sage | Learning Instructor | Creates educational content |
+| 📊 Atlas | Business Analyst | Studies strategies and opportunities |
+| 🎮 Forge | Game Developer | Designs game systems and mechanics |
+
+---
+
+# ✨ Current Features
+
+## 🧠 AI Core Dashboard
+
+- Real-time AI employee monitoring
+- Agent status tracking
+- Energy system
+- Current task display
+- Activity timeline
+
+---
+
+## 📋 Mission Management
+
+- Create company missions
+- Generate mission tasks
+- Track progress
+- Monitor completion status
+
+---
+
+## ⚙️ AI Task System
+
+- Assign tasks to AI agents
+- Start working simulation
+- Complete missions
+- Update agent status automatically
+
+---
+
+## 💾 Memory System
+
+AI Studio includes multiple memory layers:
+Agent Memory
+|
+↓
+Manager Memory
+|
+↓
+Activity Memory
+|
+↓
+Mission History
+
+---
+
+# 🛠️ Technology Stack
+
+## Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+
+## Development
+
+- VS Code
+- Git
+- GitHub
+
+## Current Architecture
+
+- Component-based UI
+- Client-side state management
+- Modular AI agent system
+- Mission workflow engine
+
+---
+
+# 📂 Project Structure
+ai-studio-hq
+
+├── app
+│ ├── core
+│ ├── missions
+│ ├── hq
+│ └── agents
+
+├── data
+│ ├── agents.ts
+│ ├── missions.ts
+│ ├── tasks.ts
+│ └── agentState.ts
+
+├── lib
+│ ├── aiManager.ts
+│ ├── aiScheduler.ts
+│ ├── workEngine.ts
+│ ├── agentMemory.ts
+│ └── activityMemory.ts
+
+└── public
+
+---
+
+# 🗺️ Development Roadmap
+
+## Completed ✅
+
+- [x] AI employee system
+- [x] Agent profiles
+- [x] Mission system
+- [x] Task management
+- [x] AI scheduler
+- [x] Agent memory
+- [x] Activity tracking
+- [x] AI Core dashboard
+
+---
+
+## Future Development 🚀
+
+- [ ] Real AI model integration
+- [ ] Natural language AI conversations
+- [ ] Cloud database
+- [ ] Multi-user workspace
+- [ ] Autonomous decision making
+- [ ] AI company simulation engine
+- [ ] Real-time collaboration
+
+---
+
+# 🎯 Project Goal
+
+AI Studio HQ explores the future possibility of AI-powered organizations where intelligent agents can collaborate, plan, and execute complex workflows.
+
+This project is a personal research and portfolio project focused on AI systems, automation, and software architecture.
+
+---
+
+# 👩‍💻 Developer
+
+Created by **imysr**
+
+Built with curiosity, experimentation, and continuous learning.
+
+---
+
+⭐ If you find this project interesting, feel free to explore the code.
