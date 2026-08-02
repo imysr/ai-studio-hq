@@ -1,114 +1,216 @@
 # 🧠 AI Studio HQ
 
-> An AI-powered company simulation platform where autonomous AI agents manage missions, tasks, and workflows.
-
-![AI Studio HQ](https://img.shields.io/badge/Project-AI%20Studio%20HQ-blue)
-![Next.js](https://img.shields.io/badge/Next.js-15-black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-06B6D4)
+> An AI-powered company simulation platform where autonomous AI agents collaborate, manage missions, and execute workflows.
 
 ---
 
-## 🌐 Overview
+# 🌐 Overview
 
-AI Studio HQ is a simulation platform that explores the concept of an AI-powered company.
+AI Studio HQ is an experimental AI workforce simulation platform that explores the concept of an AI-powered organization.
 
-Instead of a traditional application where humans control every action, AI Studio creates a virtual organization where different AI agents have their own roles, responsibilities, tasks, and memory systems.
+The system creates a virtual company environment where AI employees have different roles, responsibilities, tasks, and memory systems.
 
-The goal is to simulate how an AI workforce could collaborate to complete projects.
+Instead of a traditional application where every action is manually controlled, AI Studio simulates how autonomous AI agents could collaborate, analyse projects, and execute workflows.
+
+This project focuses on:
+
+- Artificial Intelligence systems
+- Agent-based architecture
+- Workflow automation
+- Software engineering
+- Future AI workforce concepts
+
+---
+
+# 📸 Demo
+
+## 🏢 AI Studio HQ Dashboard
+
+The central headquarters where users can monitor the AI organization and its departments.
+
+Features:
+
+- AI Core access
+- Department overview
+- AI employee management
+- Virtual company structure
+
+---
+
+## 🧠 AI Strategy Room
+
+The AI Manager analyses missions and creates strategic decisions.
+
+Example workflow:
+
+```
+Mission Received
+
+        ↓
+
+Mission Analysis
+
+        ↓
+
+Strategic Decision
+
+        ↓
+
+AI Team Execution
+```
+
+The strategy system allows AI agents to analyse company goals and prepare execution plans.
+
+---
+
+## 📅 AI Company Activity
+
+The activity system records AI workforce operations.
+
+Examples:
+
+- Mission analysis
+- Agent assignments
+- Task execution
+- AI workflow events
+
+---
+
+## 📋 Mission Control
+
+Mission Control allows users to create projects and assign AI employees.
+
+Features:
+
+✅ Create missions  
+✅ Assign AI workers  
+✅ Organise workflows  
+✅ Launch projects  
 
 ---
 
 # 🏢 AI Company Architecture
-             CEO
 
-              ↓
+```
+                         CEO
 
-      🧠 AI Manager (Valid)
+                          ↓
 
-              ↓
+                  🧠 AI Manager (Valid)
 
-      Mission Planning System
+                          ↓
 
-              ↓
+              Mission Planning System
 
-       AI Scheduler Engine
+                          ↓
 
-              ↓
+                 AI Scheduler Engine
 
-    ┌─────────┼─────────┐
-    ↓         ↓         ↓
+                          ↓
 
-CodeBot    Pixel     Atlas
-              ↓
-Software UI/UX Business
-Engineer Designer Analyst
-             ↓
 
-      Agent Memory System
+        ┌────────────────────────────┐
 
-              ↓
+        ↓             ↓              ↓
 
-        AI Core Dashboard
-        
+
+    CodeBot        Pixel          Atlas
+
+ Software        UI/UX       Business
+ Engineer       Designer     Analyst
+
+
+        ↓             ↓              ↓
+
+
+              Agent Memory System
+
+                          ↓
+
+                 AI Core Dashboard
+```
+
 ---
 
 # 🤖 AI Employees
 
 | Agent | Role | Responsibility |
 |---|---|---|
-| 🧑‍💼 Valid | CEO Assistant | Plans missions and coordinates AI workers |
-| 💻 CodeBot | Software Engineer | Develops applications and technical systems |
-| 🎨 Pixel | UI/UX Designer | Designs interfaces and user experiences |
-| 📚 Sage | Learning Instructor | Creates educational content |
-| 📊 Atlas | Business Analyst | Studies strategies and opportunities |
-| 🎮 Forge | Game Developer | Designs game systems and mechanics |
+| 🧑‍💼 Valid | CEO Assistant | Analyses missions and coordinates AI workers |
+| 💻 CodeBot | Software Engineer | Develops applications and technical solutions |
+| 🎨 Pixel | UI/UX Designer | Creates interfaces and improves user experience |
+| 📚 Sage | Learning Instructor | Creates educational materials |
+| 📊 Atlas | Business Analyst | Analyses strategies and opportunities |
+| 🎮 Forge | Game Developer | Designs game concepts and mechanics |
 
 ---
 
-# ✨ Current Features
+# ⚙️ Core Systems
 
-## 🧠 AI Core Dashboard
+## 📋 Mission System
 
-- Real-time AI employee monitoring
-- Agent status tracking
-- Energy system
-- Current task display
-- Activity timeline
+The mission system transforms company goals into structured workflows.
+
+Example:
+
+```
+Mission:
+
+Build MPA Mobile App
+
+
+Tasks:
+
+1. Project Planning
+2. System Development
+3. UI/UX Design
+4. Business Analysis
+```
 
 ---
 
-## 📋 Mission Management
+## 🤖 AI Task Workflow
 
-- Create company missions
-- Generate mission tasks
-- Track progress
-- Monitor completion status
+AI agents follow a structured workflow:
 
----
+```
+Pending
 
-## ⚙️ AI Task System
+ ↓
 
-- Assign tasks to AI agents
-- Start working simulation
-- Complete missions
-- Update agent status automatically
+Working
+
+ ↓
+
+Completed
+```
 
 ---
 
 ## 💾 Memory System
 
-AI Studio includes multiple memory layers:
-Agent Memory
-|
-↓
-Manager Memory
-|
-↓
-Activity Memory
-|
-↓
-Mission History
+AI Studio contains multiple memory layers.
+
+```
+                🧠 AI Memory System
+
+
+                       ↓
+
+
+      ┌────────────┬────────────┬────────────┐
+
+      ↓            ↓            ↓
+
+
+ Agent Memory  Manager Memory  Activity Memory
+
+
+                       ↓
+
+
+              Mission History
+```
 
 ---
 
@@ -121,20 +223,24 @@ Mission History
 - TypeScript
 - Tailwind CSS
 
-## Development
 
-- VS Code
+## Development Tools
+
+- Visual Studio Code
 - Git
 - GitHub
 
-## Current Architecture
+
+## Architecture
 
 - Component-based UI
-- Client-side state management
 - Modular AI agent system
 - Mission workflow engine
+- Memory management system
 
 ---
+
+# 📂 Project Structure
 
 ```text
 ai-studio-hq
@@ -144,37 +250,38 @@ ai-studio-hq
 │   ├── missions
 │   ├── hq
 │   └── agents
-│
+
 ├── data
 │   ├── agents.ts
 │   ├── missions.ts
 │   ├── tasks.ts
 │   └── agentState.ts
-│
+
 ├── lib
 │   ├── aiManager.ts
 │   ├── aiScheduler.ts
 │   ├── workEngine.ts
 │   ├── agentMemory.ts
 │   └── activityMemory.ts
-│
+
 └── public
 ```
+
+---
 
 # 🗺️ Development Roadmap
 
 ## Completed ✅
 
-- [x] AI employee system
-- [x] Agent profiles
-- [x] Mission system
-- [x] Task management
-- [x] AI scheduler
-- [x] Agent memory
-- [x] Activity tracking
-- [x] AI Core dashboard
+- [x] AI Employee System
+- [x] Agent Profiles
+- [x] Mission Management
+- [x] Task Management
+- [x] AI Scheduler
+- [x] Agent Memory System
+- [x] Activity Tracking
+- [x] AI Core Dashboard
 
----
 
 ## Future Development 🚀
 
@@ -182,17 +289,18 @@ ai-studio-hq
 - [ ] Natural language AI conversations
 - [ ] Cloud database
 - [ ] Multi-user workspace
+- [ ] Voice AI agents
 - [ ] Autonomous decision making
-- [ ] AI company simulation engine
 - [ ] Real-time collaboration
+- [ ] Advanced AI company simulation
 
 ---
 
-# 🎯 Project Goal
+# 🎯 Project Vision
 
-AI Studio HQ explores the future possibility of AI-powered organizations where intelligent agents can collaborate, plan, and execute complex workflows.
+AI Studio HQ explores the future possibility of AI-powered organizations where intelligent agents can collaborate, plan, and execute complex projects.
 
-This project is a personal research and portfolio project focused on AI systems, automation, and software architecture.
+The long-term vision is to create a simulation environment where AI agents can operate like a digital workforce.
 
 ---
 
