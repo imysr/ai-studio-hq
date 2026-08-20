@@ -14,6 +14,7 @@ import {
 } from "@/lib/agentMemory";
 
 import { getTasks, saveTasks } from "@/lib/taskStorage";
+import { retryAgentTask } from "@/lib/workEngine";
 
 const rooms = {
   1: {
@@ -51,6 +52,8 @@ const rooms = {
   },
 };
 
+const REAL_AI_AGENTS = [2, 6];
+
 export default function AgentRoom() {
   const params = useParams();
 
@@ -69,6 +72,10 @@ export default function AgentRoom() {
   const [taskDescription, setTaskDescription] = useState("");
 
   const [successMessage, setSuccessMessage] = useState("");
+
+  const [retryMessage, setRetryMessage] = useState("");
+
+  const [retryingTaskId, setRetryingTaskId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -91,6 +98,20 @@ export default function AgentRoom() {
       window.clearTimeout(timer);
     };
   }, [id]);
+
+  function refreshAgentData() {
+    const memories = getAgentMemory();
+
+    const memory = memories.find((item) => item.id === id);
+
+    setAgentMemory(memory ?? null);
+
+    const tasks = getTasks();
+
+    const agentTasks = tasks.filter((task) => task.assignedAgent === id);
+
+    setAssignedTasks(agentTasks);
+  }
 
   function handleAssignTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -149,8 +170,8 @@ export default function AgentRoom() {
     /*
       UPDATE AGENT MEMORY
 
-      The agent has received the assignment,
-      but has not started working yet.
+      Agent has received the assignment,
+      but AI Core has not started it yet.
     */
 
     const memories = getAgentMemory();
@@ -177,10 +198,6 @@ export default function AgentRoom() {
 
     saveAgentMemory(updatedMemory);
 
-    /*
-      REFRESH ROOM UI
-    */
-
     const currentAgentMemory = updatedMemory.find((memory) => memory.id === id);
 
     setAgentMemory(currentAgentMemory ?? null);
@@ -190,6 +207,8 @@ export default function AgentRoom() {
     setTaskTitle("");
 
     setTaskDescription("");
+
+    setRetryMessage("");
 
     setSuccessMessage(
       `Task queued for ${agent?.name ?? "agent"} successfully.`,
@@ -220,10 +239,6 @@ export default function AgentRoom() {
     });
 
     saveTasks(updatedTasks);
-
-    /*
-      CHECK FOR ANOTHER ACTIVE TASK
-    */
 
     const remainingTasks = updatedTasks.filter(
       (task) => task.assignedAgent === id && task.status !== "Completed",
@@ -262,6 +277,59 @@ export default function AgentRoom() {
     setAgentMemory(currentAgentMemory ?? null);
 
     setAssignedTasks(updatedTasks.filter((task) => task.assignedAgent === id));
+  }
+
+  /*
+    MANUAL AI RETRY
+
+    Used only for CodeBot / Forge tasks
+    that failed while generating at 75%.
+  */
+
+  async function handleRetryAI(taskId: number) {
+    if (retryingTaskId !== null) {
+      return;
+    }
+
+    setRetryingTaskId(taskId);
+
+    setRetryMessage("Retrying AI generation...");
+
+    try {
+      const result = await retryAgentTask(taskId);
+
+      refreshAgentData();
+
+      setRetryMessage(result.message);
+    } catch (error) {
+      console.error("Retry AI error:", error);
+
+      refreshAgentData();
+
+      setRetryMessage("AI retry failed. Please try again later.");
+    } finally {
+      setRetryingTaskId(null);
+    }
+  }
+
+  function isAIErrorTask(task: MissionTask) {
+    return (
+      REAL_AI_AGENTS.includes(task.assignedAgent) &&
+      task.status === "Working" &&
+      task.progress === 75 &&
+      agentMemory?.missionStatus === "AI Generation Error" &&
+      agentMemory?.currentTask === task.title
+    );
+  }
+
+  function isAIGeneratingTask(task: MissionTask) {
+    return (
+      REAL_AI_AGENTS.includes(task.assignedAgent) &&
+      task.status === "Working" &&
+      task.progress === 75 &&
+      agentMemory?.missionStatus === "Generating AI Result" &&
+      agentMemory?.currentTask === task.title
+    );
   }
 
   if (!agent) {
@@ -538,6 +606,22 @@ export default function AgentRoom() {
             Mission tasks and direct assignments for {agent.name}.
           </p>
 
+          {retryMessage && (
+            <div
+              className="
+              mt-5
+              bg-blue-500/10
+              border
+              border-blue-500/20
+              text-blue-300
+              rounded-xl
+              p-4
+              "
+            >
+              {retryMessage}
+            </div>
+          )}
+
           <div className="mt-6 space-y-4">
             {assignedTasks.length === 0 ? (
               <div
@@ -552,151 +636,258 @@ export default function AgentRoom() {
                 <p className="text-gray-500">No tasks assigned.</p>
               </div>
             ) : (
-              assignedTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="
-                  bg-black
-                  border
-                  border-white/10
-                  rounded-2xl
-                  p-6
-                  "
-                >
-                  {/* TASK HEADER */}
+              assignedTasks.map((task) => {
+                const aiError = isAIErrorTask(task);
 
+                const aiGenerating = isAIGeneratingTask(task);
+
+                return (
                   <div
+                    key={task.id}
                     className="
-                    flex
-                    items-start
-                    justify-between
-                    gap-5
-                    flex-wrap
+                    bg-black
+                    border
+                    border-white/10
+                    rounded-2xl
+                    p-6
                     "
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="text-xl font-bold">{task.title}</h3>
+                    {/* TASK HEADER */}
 
-                        {task.missionId === 0 && (
-                          <span
-                            className="
-                            text-xs
-                            border
-                            border-blue-500/30
-                            text-blue-400
-                            rounded-full
-                            px-3
-                            py-1
-                            "
-                          >
-                            Direct Assignment
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-gray-500 mt-3">{task.description}</p>
-
-                      {/* PROGRESS */}
-
-                      <div className="mt-5">
-                        <div
-                          className="
-                          flex
-                          justify-between
-                          text-sm
-                          text-gray-500
-                          mb-2
-                          "
-                        >
-                          <span>{task.status}</span>
-
-                          <span>{task.progress}%</span>
-                        </div>
-
-                        <div
-                          className="
-                          h-2
-                          bg-white/10
-                          rounded-full
-                          overflow-hidden
-                          "
-                        >
-                          <div
-                            className="
-                            h-full
-                            bg-white
-                            rounded-full
-                            transition-all
-                            "
-                            style={{
-                              width: `${task.progress}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* MANUAL COMPLETE */}
-
-                    {task.status !== "Completed" && (
-                      <button
-                        type="button"
-                        onClick={() => handleCompleteTask(task.id)}
-                        className="
-                        px-4
-                        py-2
-                        border
-                        border-white/20
-                        rounded-xl
-                        text-sm
-                        hover:bg-white
-                        hover:text-black
-                        transition
-                        "
-                      >
-                        ✓ Complete
-                      </button>
-                    )}
-
-                    {task.status === "Completed" && (
-                      <span className="text-green-400 text-sm">
-                        ✓ Completed
-                      </span>
-                    )}
-                  </div>
-
-                  {/* WORK RESULT */}
-
-                  {task.status === "Completed" && task.result && (
                     <div
                       className="
-                        mt-6
-                        bg-[#080808]
-                        border
-                        border-white/10
-                        rounded-xl
-                        p-5
-                        "
+                      flex
+                      items-start
+                      justify-between
+                      gap-5
+                      flex-wrap
+                      "
                     >
-                      <h4 className="font-bold text-lg">📄 Work Result</h4>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <h3 className="text-xl font-bold">{task.title}</h3>
 
-                      <pre
-                        className="
-                          whitespace-pre-wrap
-                          text-gray-300
+                          {task.missionId === 0 && (
+                            <span
+                              className="
+                              text-xs
+                              border
+                              border-blue-500/30
+                              text-blue-400
+                              rounded-full
+                              px-3
+                              py-1
+                              "
+                            >
+                              Direct Assignment
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-gray-500 mt-3">{task.description}</p>
+
+                        {/* AI ERROR */}
+
+                        {aiError && (
+                          <div
+                            className="
+                            mt-5
+                            bg-yellow-500/10
+                            border
+                            border-yellow-500/20
+                            rounded-xl
+                            p-4
+                            "
+                          >
+                            <p className="text-yellow-400 font-bold">
+                              ⚠ AI Generation Error
+                            </p>
+
+                            <p className="text-gray-400 text-sm mt-2">
+                              The AI provider could not complete this request.
+                              The task has been paused so it will not retry
+                              automatically.
+                            </p>
+                          </div>
+                        )}
+
+                        {/* AI GENERATING */}
+
+                        {aiGenerating && (
+                          <div
+                            className="
+                            mt-5
+                            bg-blue-500/10
+                            border
+                            border-blue-500/20
+                            rounded-xl
+                            p-4
+                            "
+                          >
+                            <p className="text-blue-400 font-bold">
+                              🧠 AI is generating the result...
+                            </p>
+                          </div>
+                        )}
+
+                        {/* PROGRESS */}
+
+                        <div className="mt-5">
+                          <div
+                            className="
+                            flex
+                            justify-between
+                            text-sm
+                            text-gray-500
+                            mb-2
+                            "
+                          >
+                            <span>{task.status}</span>
+
+                            <span>{task.progress}%</span>
+                          </div>
+
+                          <div
+                            className="
+                            h-2
+                            bg-white/10
+                            rounded-full
+                            overflow-hidden
+                            "
+                          >
+                            <div
+                              className="
+                              h-full
+                              bg-white
+                              rounded-full
+                              transition-all
+                              "
+                              style={{
+                                width: `${task.progress}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* RETRY AI */}
+
+                      {aiError && (
+                        <button
+                          type="button"
+                          disabled={retryingTaskId === task.id}
+                          onClick={() => handleRetryAI(task.id)}
+                          className="
+                          px-4
+                          py-2
+                          border
+                          border-yellow-500/40
+                          text-yellow-300
+                          rounded-xl
                           text-sm
-                          mt-4
-                          font-sans
-                          leading-6
+                          hover:bg-yellow-500/10
+                          disabled:opacity-50
+                          disabled:cursor-not-allowed
+                          transition
+                          "
+                        >
+                          {retryingTaskId === task.id
+                            ? "🧠 Retrying..."
+                            : "🔄 Retry AI"}
+                        </button>
+                      )}
+
+                      {/* GENERATING */}
+
+                      {aiGenerating && (
+                        <button
+                          type="button"
+                          disabled
+                          className="
+                          px-4
+                          py-2
+                          border
+                          border-blue-500/30
+                          text-blue-400
+                          rounded-xl
+                          text-sm
+                          opacity-70
+                          cursor-not-allowed
+                          "
+                        >
+                          🧠 Generating...
+                        </button>
+                      )}
+
+                      {/* MANUAL COMPLETE */}
+
+                      {task.status !== "Completed" &&
+                        !aiError &&
+                        !aiGenerating &&
+                        !(
+                          REAL_AI_AGENTS.includes(task.assignedAgent) &&
+                          task.progress === 75
+                        ) && (
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTask(task.id)}
+                            className="
+                            px-4
+                            py-2
+                            border
+                            border-white/20
+                            rounded-xl
+                            text-sm
+                            hover:bg-white
+                            hover:text-black
+                            transition
+                            "
+                          >
+                            ✓ Complete
+                          </button>
+                        )}
+
+                      {/* COMPLETED */}
+
+                      {task.status === "Completed" && (
+                        <span className="text-green-400 text-sm">
+                          ✓ Completed
+                        </span>
+                      )}
+                    </div>
+
+                    {/* WORK RESULT */}
+
+                    {task.status === "Completed" && task.result && (
+                      <div
+                        className="
+                          mt-6
+                          bg-[#080808]
+                          border
+                          border-white/10
+                          rounded-xl
+                          p-5
                           "
                       >
-                        {task.result}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              ))
+                        <h4 className="font-bold text-lg">📄 Work Result</h4>
+
+                        <pre
+                          className="
+                            whitespace-pre-wrap
+                            text-gray-300
+                            text-sm
+                            mt-4
+                            font-sans
+                            leading-6
+                            "
+                        >
+                          {task.result}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </section>

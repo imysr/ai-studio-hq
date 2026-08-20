@@ -4,35 +4,55 @@ import { getAgentMemory, saveAgentMemory } from "@/lib/agentMemory";
 import { agents } from "@/data/agents";
 import type { MissionTask } from "@/data/tasks";
 
+/*
+  REAL AI AGENTS
+
+  CodeBot = 2
+  Forge   = 6
+
+  Other agents still use local template results.
+*/
+
+const REAL_AI_AGENTS = [2, 6];
+
+const workLocations: Record<number, string> = {
+  1: "CEO Office",
+  2: "Development Lab",
+  3: "Design Studio",
+  4: "Learning Academy",
+  5: "Strategy Room",
+  6: "Game Studio",
+};
+
 export function startAgentTask(taskId: number) {
   const tasks = getTasks();
 
   const updatedTasks: MissionTask[] = tasks.map((task): MissionTask => {
-    if (task.id === taskId) {
-      const agent = agents.find((a) => a.id === task.assignedAgent);
-
-      saveActivity({
-        id: Date.now(),
-
-        time: new Date().toLocaleTimeString(),
-
-        icon: agent?.emoji ?? "⚙️",
-
-        message: `${agent?.name ?? "AI Agent"} started ${task.title}`,
-      });
-
-      updateAgentMemory(task, "Working");
-
-      return {
-        ...task,
-
-        status: "Working",
-
-        progress: 50,
-      };
+    if (task.id !== taskId) {
+      return task;
     }
 
-    return task;
+    const agent = agents.find((a) => a.id === task.assignedAgent);
+
+    saveActivity({
+      id: Date.now(),
+
+      time: new Date().toLocaleTimeString(),
+
+      icon: agent?.emoji ?? "⚙️",
+
+      message: `${agent?.name ?? "AI Agent"} started ${task.title}`,
+    });
+
+    updateAgentMemory(task, "Working");
+
+    return {
+      ...task,
+
+      status: "Working",
+
+      progress: 50,
+    };
   });
 
   saveTasks(updatedTasks);
@@ -41,14 +61,10 @@ export function startAgentTask(taskId: number) {
 /*
   COMPLETE TASK
 
-  Forge (Agent 6)
-  ----------------
-  Uses the real Gemini API.
+  CodeBot and Forge use Gemini.
 
-  Other agents
-  ----------------
-  Still use template-generated results
-  until we test Forge properly.
+  Valid, Pixel, Sage and Atlas
+  still use template results.
 */
 
 export async function completeAgentTask(taskId: number) {
@@ -61,17 +77,17 @@ export async function completeAgentTask(taskId: number) {
   }
 
   /*
-    FORGE — REAL AI
+    REAL AI AGENT
   */
 
-  if (task.assignedAgent === 6) {
-    await completeForgeTask(task);
+  if (REAL_AI_AGENTS.includes(task.assignedAgent)) {
+    await completeRealAITask(task);
 
     return;
   }
 
   /*
-    OTHER AGENTS — TEMPLATE RESULTS
+    TEMPLATE AGENT
   */
 
   const result = generateTaskResult(task);
@@ -80,35 +96,74 @@ export async function completeAgentTask(taskId: number) {
 }
 
 /*
-  FORGE REAL GEMINI WORK
+  MANUAL AI RETRY
+
+  This is intentionally NOT called
+  by the scheduler.
+
+  It is only used when the user presses
+  the Retry AI button manually.
 */
 
-async function completeForgeTask(task: MissionTask) {
-  /*
-    Safety protection.
+export async function retryAgentTask(taskId: number) {
+  const tasks = getTasks();
 
-    Forge may ONLY call Gemini when the
-    task is actually Working at 50%.
+  const task = tasks.find((item) => item.id === taskId);
 
-    Once the API request begins, progress
-    becomes 75%.
-
-    This prevents the 5-second scheduler
-    from sending the same Gemini request
-    again and again.
-  */
-
-  if (task.status !== "Working" || task.progress !== 50) {
-    return;
+  if (!task) {
+    return {
+      success: false,
+      message: "Task not found.",
+    };
   }
 
   /*
-    MARK AS GENERATING
+    Only CodeBot and Forge currently
+    have real Gemini access.
   */
 
-  const currentTasks = getTasks();
+  if (!REAL_AI_AGENTS.includes(task.assignedAgent)) {
+    return {
+      success: false,
+      message: "This agent does not have real AI access yet.",
+    };
+  }
 
-  const generatingTasks = currentTasks.map((item) => {
+  /*
+    Retry is ONLY allowed for a task
+    that failed while generating at 75%.
+
+    This protects us from accidental
+    extra Gemini requests.
+  */
+
+  if (task.status !== "Working" || task.progress !== 75) {
+    return {
+      success: false,
+      message: "This task is not waiting for an AI retry.",
+    };
+  }
+
+  const agent = agents.find((a) => a.id === task.assignedAgent);
+
+  if (!agent) {
+    return {
+      success: false,
+      message: "Agent not found.",
+    };
+  }
+
+  /*
+    Temporarily move back to 50%.
+
+    completeRealAITask() only accepts
+    Working tasks at 50%.
+
+    It will immediately move the task
+    back to 75% while Gemini generates.
+  */
+
+  const resetTasks: MissionTask[] = tasks.map((item): MissionTask => {
     if (item.id !== task.id) {
       return item;
     }
@@ -116,9 +171,115 @@ async function completeForgeTask(task: MissionTask) {
     return {
       ...item,
 
-      progress: 75,
+      status: "Working",
+
+      progress: 50,
     };
   });
+
+  saveTasks(resetTasks);
+
+  saveActivity({
+    id: Date.now(),
+
+    time: new Date().toLocaleTimeString(),
+
+    icon: "🔄",
+
+    message: `Retrying AI generation for ${agent.name}: ${task.title}`,
+  });
+
+  updateAgentRetryMemory(task);
+
+  const retryTask: MissionTask = {
+    ...task,
+
+    status: "Working",
+
+    progress: 50,
+  };
+
+  await completeRealAITask(retryTask);
+
+  /*
+    Check whether the retry succeeded.
+  */
+
+  const refreshedTasks = getTasks();
+
+  const refreshedTask = refreshedTasks.find((item) => item.id === task.id);
+
+  if (refreshedTask?.status === "Completed" && refreshedTask.progress === 100) {
+    return {
+      success: true,
+      message: `${agent.name} completed the task successfully.`,
+    };
+  }
+
+  return {
+    success: false,
+    message: `${agent.name} could not complete the AI request. You can retry later.`,
+  };
+}
+
+/*
+  REAL GEMINI TASK
+
+  Used by:
+  - CodeBot
+  - Forge
+*/
+
+async function completeRealAITask(task: MissionTask) {
+  /*
+    Only Working 50% tasks are allowed
+    to start an API request.
+
+    Once Gemini generation begins,
+    progress becomes 75%.
+
+    This protects us from repeated
+    requests caused by the scheduler.
+  */
+
+  if (task.status !== "Working" || task.progress !== 50) {
+    return;
+  }
+
+  const agent = agents.find((a) => a.id === task.assignedAgent);
+
+  if (!agent) {
+    return;
+  }
+
+  /*
+    Only explicitly enabled AI agents
+    may reach Gemini.
+  */
+
+  if (!REAL_AI_AGENTS.includes(task.assignedAgent)) {
+    return;
+  }
+
+  /*
+    MARK TASK AS GENERATING
+  */
+
+  const currentTasks = getTasks();
+
+  const generatingTasks: MissionTask[] = currentTasks.map(
+    (item): MissionTask => {
+      if (item.id !== task.id) {
+        return item;
+      }
+
+      return {
+        ...item,
+
+        progress: 75,
+      };
+    },
+  );
 
   saveTasks(generatingTasks);
 
@@ -131,16 +292,21 @@ async function completeForgeTask(task: MissionTask) {
 
     icon: "🧠",
 
-    message: `Forge is generating real AI work for ${task.title}`,
+    message: `${agent.name} is generating real AI work for ${task.title}`,
   });
 
   try {
     /*
-      CALL OUR SECURE NEXT.JS API
+      CALL OUR NEXT.JS API
 
-      API key stays inside .env.local.
-      It is never sent directly from the
-      browser to Gemini.
+      Browser:
+      /api/ai
+
+      Server:
+      Gemini
+
+      The API key stays securely inside
+      .env.local.
     */
 
     const response = await fetch("/api/ai", {
@@ -151,7 +317,7 @@ async function completeForgeTask(task: MissionTask) {
       },
 
       body: JSON.stringify({
-        agent: "Forge",
+        agent: agent.name,
 
         taskTitle: task.title,
 
@@ -162,31 +328,34 @@ async function completeForgeTask(task: MissionTask) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data?.error ?? "Forge AI request failed.");
+      throw new Error(data?.error ?? `${agent.name} AI request failed.`);
     }
 
     const result = typeof data.result === "string" ? data.result.trim() : "";
 
     if (!result) {
-      throw new Error("Forge returned an empty AI result.");
+      throw new Error(`${agent.name} returned an empty AI result.`);
     }
 
     /*
-      SAVE REAL AI RESULT
+      SAVE REAL GEMINI RESULT
     */
 
     finalizeTask(task, result);
   } catch (error) {
-    console.error("Forge AI error:", error);
+    console.error(`${agent.name} AI error:`, error);
 
     /*
-      IMPORTANT:
+      IMPORTANT
 
-      We leave the task at Working 75%
-      instead of automatically retrying.
+      No automatic retry.
 
-      This protects the free API quota
-      from an accidental retry loop.
+      Task stays:
+      Working
+      75%
+
+      The user must manually press
+      Retry AI.
     */
 
     saveActivity({
@@ -196,7 +365,7 @@ async function completeForgeTask(task: MissionTask) {
 
       icon: "⚠️",
 
-      message: `Forge AI generation failed for ${task.title}`,
+      message: `${agent.name} AI generation failed for ${task.title}`,
     });
 
     updateAgentErrorMemory(task);
@@ -244,13 +413,17 @@ function finalizeTask(task: MissionTask, result: string) {
 }
 
 /*
-  TEMPORARY RESULT GENERATOR
+  TEMPORARY LOCAL RESULT GENERATOR
 
-  Valid, CodeBot, Pixel, Sage and Atlas
-  still use these templates.
+  Still template-based:
+  - Valid
+  - Pixel
+  - Sage
+  - Atlas
 
-  Forge no longer uses its template
-  during automatic AI completion.
+  Real Gemini:
+  - CodeBot
+  - Forge
 */
 
 function generateTaskResult(task: MissionTask): string {
@@ -284,7 +457,7 @@ Strategic analysis completed.
       `.trim();
 
     /*
-      CODEBOT
+      CODEBOT FALLBACK
     */
 
     case 2:
@@ -297,15 +470,8 @@ ${task.title}
 Instructions:
 ${task.description}
 
-Development Plan:
-1. Review the requested feature.
-2. Define the component architecture.
-3. Prepare the required logic.
-4. Test the implementation.
-5. Review for errors and improvements.
-
 Status:
-Initial development analysis completed.
+CodeBot completed the development task.
       `.trim();
 
     /*
@@ -385,9 +551,6 @@ Initial strategy analysis completed.
 
     /*
       FORGE FALLBACK
-
-      Normally Forge will not reach this
-      because it uses Gemini.
     */
 
     case 6:
@@ -401,7 +564,7 @@ Instructions:
 ${task.description}
 
 Status:
-Forge completed the task.
+Forge completed the game-development task.
       `.trim();
 
     default:
@@ -427,52 +590,38 @@ Task completed successfully.
 function updateAgentMemory(task: MissionTask, status: string) {
   const memory = getAgentMemory();
 
-  const workLocations: Record<number, string> = {
-    1: "CEO Office",
-
-    2: "Development Lab",
-
-    3: "Design Studio",
-
-    4: "Learning Academy",
-
-    5: "Strategy Room",
-
-    6: "Game Studio",
-  };
-
   const updated = memory.map((agent) => {
-    if (agent.id === task.assignedAgent) {
-      return {
-        ...agent,
-
-        currentTask:
-          status === "Completed" ? "Waiting for assignment" : task.title,
-
-        missionStatus: status === "Completed" ? "Idle" : "Working",
-
-        location:
-          status === "Completed"
-            ? "Office"
-            : (workLocations[task.assignedAgent] ?? "Office"),
-
-        energy: status === "Completed" ? 100 : 90,
-
-        lastAction:
-          status === "Completed"
-            ? `Completed ${task.title}`
-            : `Started ${task.title}`,
-      };
+    if (agent.id !== task.assignedAgent) {
+      return agent;
     }
 
-    return agent;
+    return {
+      ...agent,
+
+      currentTask:
+        status === "Completed" ? "Waiting for assignment" : task.title,
+
+      missionStatus: status === "Completed" ? "Idle" : "Working",
+
+      location:
+        status === "Completed"
+          ? "Office"
+          : (workLocations[task.assignedAgent] ?? "Office"),
+
+      energy: status === "Completed" ? 100 : 90,
+
+      lastAction:
+        status === "Completed"
+          ? `Completed ${task.title}`
+          : `Started ${task.title}`,
+    };
   });
 
   saveAgentMemory(updated);
 }
 
 /*
-  FORGE GENERATING MEMORY
+  REAL AI GENERATING MEMORY
 */
 
 function updateAgentGeneratingMemory(task: MissionTask) {
@@ -490,7 +639,7 @@ function updateAgentGeneratingMemory(task: MissionTask) {
 
       missionStatus: "Generating AI Result",
 
-      location: "Game Studio",
+      location: workLocations[task.assignedAgent] ?? "Office",
 
       energy: 85,
 
@@ -502,11 +651,39 @@ function updateAgentGeneratingMemory(task: MissionTask) {
 }
 
 /*
-  FORGE ERROR MEMORY
+  AI RETRY MEMORY
+*/
 
-  We intentionally do NOT automatically
-  retry Gemini because we want to protect
-  the free API quota.
+function updateAgentRetryMemory(task: MissionTask) {
+  const memory = getAgentMemory();
+
+  const updated = memory.map((agent) => {
+    if (agent.id !== task.assignedAgent) {
+      return agent;
+    }
+
+    return {
+      ...agent,
+
+      currentTask: task.title,
+
+      missionStatus: "Retrying AI",
+
+      location: workLocations[task.assignedAgent] ?? "Office",
+
+      energy: 85,
+
+      lastAction: `Retrying AI generation for ${task.title}`,
+    };
+  });
+
+  saveAgentMemory(updated);
+}
+
+/*
+  REAL AI ERROR MEMORY
+
+  No automatic retry is performed.
 */
 
 function updateAgentErrorMemory(task: MissionTask) {
@@ -524,7 +701,7 @@ function updateAgentErrorMemory(task: MissionTask) {
 
       missionStatus: "AI Generation Error",
 
-      location: "Game Studio",
+      location: workLocations[task.assignedAgent] ?? "Office",
 
       energy: 85,
 
