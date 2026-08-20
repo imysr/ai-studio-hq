@@ -1,18 +1,16 @@
 import { getTasks } from "@/lib/taskStorage";
-import { startAgentTask } from "@/lib/workEngine";
+import { startAgentTask, completeAgentTask } from "@/lib/workEngine";
 
 export function runAIScheduler() {
   const tasks = getTasks();
 
   const pendingTasks = tasks.filter((task) => task.status === "Pending");
 
-  if (pendingTasks.length === 0) {
-    return {
-      message: "No pending tasks",
-    };
-  }
+  const workingTasks = tasks.filter((task) => task.status === "Working");
 
   const startedTasks: number[] = [];
+
+  const completedTasks: number[] = [];
 
   pendingTasks.forEach((task) => {
     startAgentTask(task.id);
@@ -20,9 +18,25 @@ export function runAIScheduler() {
     startedTasks.push(task.id);
   });
 
-  return {
-    message: `Started ${startedTasks.length} AI tasks`,
+  workingTasks.forEach((task) => {
+    completeAgentTask(task.id);
 
-    tasks: startedTasks,
+    completedTasks.push(task.id);
+  });
+
+  if (startedTasks.length === 0 && completedTasks.length === 0) {
+    return {
+      message: "No active AI tasks",
+      startedTasks: [],
+      completedTasks: [],
+    };
+  }
+
+  return {
+    message: `Started ${startedTasks.length} task(s), completed ${completedTasks.length} task(s)`,
+
+    startedTasks,
+
+    completedTasks,
   };
 }

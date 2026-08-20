@@ -75,6 +75,15 @@ export function completeAgentTask(taskId: number) {
 function updateAgentMemory(task: MissionTask, status: string) {
   const memory = getAgentMemory();
 
+  const workLocations: Record<number, string> = {
+    1: "CEO Office",
+    2: "Development Lab",
+    3: "Design Studio",
+    4: "Learning Academy",
+    5: "Strategy Room",
+    6: "Game Studio",
+  };
+
   const updated = memory.map((agent) => {
     if (agent.id === task.assignedAgent) {
       return {
@@ -85,7 +94,10 @@ function updateAgentMemory(task: MissionTask, status: string) {
 
         missionStatus: status === "Completed" ? "Idle" : "Working",
 
-        location: status === "Completed" ? "Office" : "AI Core Meeting Room",
+        location:
+          status === "Completed"
+            ? "Office"
+            : (workLocations[task.assignedAgent] ?? "Office"),
 
         energy: status === "Completed" ? 100 : 90,
 
