@@ -52,8 +52,8 @@ export default function CorePage() {
   const [activities, setActivities] = useState<ActivityMemory[]>([]);
 
   useEffect(() => {
-    function updateCore() {
-      runAIScheduler();
+    async function updateCore() {
+      await runAIScheduler();
 
       const agentData = getAgentMemory();
 

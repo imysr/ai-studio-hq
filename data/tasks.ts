@@ -12,6 +12,8 @@ export type MissionTask = {
   status: "Pending" | "Working" | "Completed";
 
   progress: number;
+
+  result?: string;
 };
 
 export const defaultTasks: MissionTask[] = [
@@ -29,6 +31,8 @@ export const defaultTasks: MissionTask[] = [
     status: "Pending",
 
     progress: 0,
+
+    result: "",
   },
 
   {
@@ -46,6 +50,8 @@ export const defaultTasks: MissionTask[] = [
     status: "Pending",
 
     progress: 0,
+
+    result: "",
   },
 
   {
@@ -62,6 +68,8 @@ export const defaultTasks: MissionTask[] = [
     status: "Pending",
 
     progress: 0,
+
+    result: "",
   },
 
   {
@@ -78,5 +86,7 @@ export const defaultTasks: MissionTask[] = [
     status: "Pending",
 
     progress: 0,
+
+    result: "",
   },
 ];

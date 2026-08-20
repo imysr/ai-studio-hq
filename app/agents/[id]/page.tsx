@@ -106,11 +106,9 @@ export default function AgentRoom() {
     /*
       missionId 0 = Direct Assignment
 
-      Direct assignments are created inside an agent room.
+      Direct assignments begin as Pending.
 
-      They begin as Pending.
-
-      AI Core will later pick them up and move them through:
+      AI Core moves them through:
 
       Pending
       ↓
@@ -134,6 +132,8 @@ export default function AgentRoom() {
       status: "Pending",
 
       progress: 0,
+
+      result: "",
     };
 
     /*
@@ -149,10 +149,8 @@ export default function AgentRoom() {
     /*
       UPDATE AGENT MEMORY
 
-      The task is only Pending here.
-
-      The agent does NOT begin working until
-      the AI Scheduler starts the task.
+      The agent has received the assignment,
+      but has not started working yet.
     */
 
     const memories = getAgentMemory();
@@ -216,6 +214,8 @@ export default function AgentRoom() {
         status: "Completed" as const,
 
         progress: 100,
+
+        result: task.result || `Task "${task.title}" was completed manually.`,
       };
     });
 
@@ -345,13 +345,13 @@ export default function AgentRoom() {
               <div
                 key={index}
                 className="
-                bg-black
-                border
-                border-white/10
-                rounded-xl
-                p-5
-                text-center
-                "
+                  bg-black
+                  border
+                  border-white/10
+                  rounded-xl
+                  p-5
+                  text-center
+                  "
               >
                 <p className="text-4xl">{item.substring(0, 2)}</p>
 
@@ -563,6 +563,8 @@ export default function AgentRoom() {
                   p-6
                   "
                 >
+                  {/* TASK HEADER */}
+
                   <div
                     className="
                     flex
@@ -594,6 +596,8 @@ export default function AgentRoom() {
                       </div>
 
                       <p className="text-gray-500 mt-3">{task.description}</p>
+
+                      {/* PROGRESS */}
 
                       <div className="mt-5">
                         <div
@@ -633,6 +637,8 @@ export default function AgentRoom() {
                       </div>
                     </div>
 
+                    {/* MANUAL COMPLETE */}
+
                     {task.status !== "Completed" && (
                       <button
                         type="button"
@@ -659,6 +665,36 @@ export default function AgentRoom() {
                       </span>
                     )}
                   </div>
+
+                  {/* WORK RESULT */}
+
+                  {task.status === "Completed" && task.result && (
+                    <div
+                      className="
+                        mt-6
+                        bg-[#080808]
+                        border
+                        border-white/10
+                        rounded-xl
+                        p-5
+                        "
+                    >
+                      <h4 className="font-bold text-lg">📄 Work Result</h4>
+
+                      <pre
+                        className="
+                          whitespace-pre-wrap
+                          text-gray-300
+                          text-sm
+                          mt-4
+                          font-sans
+                          leading-6
+                          "
+                      >
+                        {task.result}
+                      </pre>
+                    </div>
+                  )}
                 </div>
               ))
             )}

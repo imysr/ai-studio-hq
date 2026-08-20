@@ -17,13 +17,31 @@ export function saveActivity(activity: ActivityMemory) {
 
   const existing = getActivities();
 
-  const updated = [activity, ...existing];
+  /*
+    Make sure every activity has a unique ID.
 
-  localStorage.setItem(
-    STORAGE_KEY,
+    Several AI agents can perform actions within
+    the same millisecond, so Date.now() alone
+    can occasionally create duplicate IDs.
+  */
 
-    JSON.stringify(updated),
-  );
+  let uniqueId = activity.id;
+
+  while (
+    existing.some((existingActivity) => existingActivity.id === uniqueId)
+  ) {
+    uniqueId += 1;
+  }
+
+  const safeActivity: ActivityMemory = {
+    ...activity,
+
+    id: uniqueId,
+  };
+
+  const updated = [safeActivity, ...existing];
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 
 export function getActivities(): ActivityMemory[] {
@@ -37,7 +55,11 @@ export function getActivities(): ActivityMemory[] {
     return [];
   }
 
-  return JSON.parse(data);
+  try {
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
 }
 
 export function clearActivities() {
