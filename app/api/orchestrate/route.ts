@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 /*
   VALID — AI ORCHESTRATOR
 
-  This API allows Valid to analyse a mission
-  and decide which AI agents should work on it.
+  This API allows Valid to analyse a mission,
+  choose the correct AI specialists,
+  decide task order,
+  and create collaboration dependencies.
 
   Agent IDs:
   1 = Valid
@@ -17,12 +19,36 @@ import { NextResponse } from "next/server";
 
 type DelegatedTask = {
   title: string;
+
   description: string;
+
   assignedAgent: number;
+
+  /*
+    These refer to indexes inside the
+    generated task array.
+
+    Example:
+    dependsOnTaskIndexes: [0, 1]
+
+    means this task must wait for
+    task #0 and task #1.
+  */
+
+  dependsOnTaskIndexes?: number[];
+
+  /*
+    Results from these earlier tasks
+    should later be passed into this
+    agent as collaboration context.
+  */
+
+  contextFromTaskIndexes?: number[];
 };
 
 type OrchestrationResult = {
   analysis: string;
+
   tasks: DelegatedTask[];
 };
 
@@ -32,24 +58,18 @@ const VALID_AGENT_IDS = [1, 2, 3, 4, 5, 6];
   VALID ORCHESTRATION AUTO RETRY
 
   Initial request
-  ↓
-  503 / 429 / temporary server error
-  ↓
-  Wait 3 seconds
-  ↓
-  Retry 1
-  ↓
-  Wait 8 seconds
-  ↓
-  Retry 2
-  ↓
-  Wait 15 seconds
-  ↓
-  Retry 3
-  ↓
-  Still unavailable?
-  ↓
-  Return orchestration error to Mission Control
+       ↓
+  Temporary failure
+       ↓
+  Wait 3 sec → Retry 1
+       ↓
+  Wait 8 sec → Retry 2
+       ↓
+  Wait 15 sec → Retry 3
+       ↓
+  Still failed?
+       ↓
+  Mission Control receives the error
 */
 
 const AUTO_RETRY_DELAYS = [3000, 8000, 15000];
@@ -101,7 +121,12 @@ export async function POST(request: Request) {
     const prompt = buildOrchestrationPrompt(missionTitle, missionDescription);
 
     /*
-      CALL GEMINI WITH AUTOMATIC RETRY
+      CALL VALID / GEMINI
+
+      The helper performs:
+      - initial request
+      - automatic retries
+      - retry delay protection
     */
 
     const rawResult = await requestValidPlan(apiKey, prompt);
@@ -152,22 +177,48 @@ export async function POST(request: Request) {
     }
 
     /*
-      ADDITIONAL SAFETY
+      SAFETY VALIDATION
 
-      Never blindly trust AI-generated
-      agent IDs or task contents.
+      We sanitize:
+      - agent IDs
+      - titles
+      - descriptions
+      - dependency indexes
+      - context indexes
     */
 
     const safeTasks = parsedResult.tasks
-      .filter((task) => VALID_AGENT_IDS.includes(task.assignedAgent))
-      .map((task) => ({
-        title: task.title.trim(),
+      .map((task, index) => {
+        const dependsOnTaskIndexes = sanitizeTaskIndexes(
+          task.dependsOnTaskIndexes,
+          parsedResult.tasks.length,
+          index,
+        );
 
-        description: task.description.trim(),
+        const contextFromTaskIndexes = sanitizeTaskIndexes(
+          task.contextFromTaskIndexes,
+          parsedResult.tasks.length,
+          index,
+        );
 
-        assignedAgent: task.assignedAgent,
-      }))
-      .filter((task) => task.title.length > 0 && task.description.length > 0);
+        return {
+          title: task.title.trim(),
+
+          description: task.description.trim(),
+
+          assignedAgent: task.assignedAgent,
+
+          dependsOnTaskIndexes,
+
+          contextFromTaskIndexes,
+        };
+      })
+      .filter(
+        (task) =>
+          VALID_AGENT_IDS.includes(task.assignedAgent) &&
+          task.title.length > 0 &&
+          task.description.length > 0,
+      );
 
     if (safeTasks.length === 0) {
       return NextResponse.json(
@@ -209,8 +260,7 @@ export async function POST(request: Request) {
 /*
   GEMINI ORCHESTRATION REQUEST
 
-  This performs the initial request
-  plus up to three automatic retries.
+  Initial call + automatic retries.
 */
 
 async function requestValidPlan(
@@ -246,7 +296,7 @@ async function requestValidPlan(
             generationConfig: {
               temperature: 0.3,
 
-              maxOutputTokens: 2000,
+              maxOutputTokens: 2200,
 
               responseMimeType: "application/json",
             },
@@ -261,9 +311,7 @@ async function requestValidPlan(
           data?.error?.message ?? "Valid failed to analyse the mission.";
 
         /*
-          Do NOT retry permanent errors
-          such as bad requests or invalid
-          authentication.
+          Do not retry permanent errors.
         */
 
         if (!RETRYABLE_STATUS_CODES.includes(response.status)) {
@@ -283,10 +331,6 @@ async function requestValidPlan(
         throw new Error("Valid returned an empty orchestration result.");
       }
 
-      /*
-        SUCCESS
-      */
-
       if (attempt > 0) {
         console.log(`Valid orchestration succeeded on attempt ${attempt + 1}.`);
       }
@@ -294,8 +338,8 @@ async function requestValidPlan(
       return rawResult;
     } catch (error) {
       /*
-        Permanent errors should not
-        waste API requests by retrying.
+        Permanent errors should
+        never trigger retries.
       */
 
       if (error instanceof PermanentOrchestrationError) {
@@ -306,10 +350,6 @@ async function requestValidPlan(
         error instanceof Error
           ? error
           : new Error("Unknown Valid orchestration error.");
-
-      /*
-        No retries remain.
-      */
 
       if (attempt >= AUTO_RETRY_DELAYS.length) {
         break;
@@ -334,9 +374,7 @@ async function requestValidPlan(
 /*
   PERMANENT ERROR
 
-  Used so things such as invalid API
-  requests do not trigger unnecessary
-  automatic retries.
+  Used for non-retryable problems.
 */
 
 class PermanentOrchestrationError extends Error {
@@ -420,6 +458,7 @@ Specialities:
 - Learning activities
 - Quizzes
 - Training materials
+- Documentation
 
 
 5 — Atlas
@@ -464,62 +503,155 @@ YOUR JOB:
 
 Analyse the mission as the CEO.
 
-Determine which specialists are actually required.
+Determine which specialists are genuinely required.
 
 Break the mission into clear professional tasks.
 
 Delegate each task to the most appropriate AI agent.
 
-Do NOT assign every agent unless the mission genuinely requires every agent.
+IMPORTANT:
 
-You may assign multiple tasks to the same agent when necessary.
+You must also decide whether tasks depend on previous tasks.
 
-Valid may assign a planning or coordination task to itself when the mission requires management work.
+Some agents may need another agent's completed work before they can begin.
 
-Tasks must be specific enough that the assigned specialist can immediately perform useful work.
+Example:
 
-Avoid vague tasks such as:
-- Help with project
-- Work on app
-- Research things
-- Improve project
+Task 0:
+Atlas creates product strategy.
 
-Prefer specific tasks such as:
-- Design the mobile emergency-contact onboarding flow
-- Implement Supabase authentication architecture
-- Create launch positioning for Malaysian motorcycle riders
-- Build a Godot 4 inventory interaction system
+Task 1:
+Pixel creates the visual design using Atlas's strategy.
+
+Task 2:
+CodeBot builds the implementation using both Atlas's strategy and Pixel's design.
+
+Task 2 would therefore contain:
+
+"dependsOnTaskIndexes": [0, 1]
+
+and:
+
+"contextFromTaskIndexes": [0, 1]
+
+
+TASK DEPENDENCY RULES:
+
+- A task with no dependencies should use an empty array.
+- A task may depend only on earlier tasks.
+- Never depend on itself.
+- Never depend on a later task.
+- Use dependencies only when they are genuinely useful.
+- Do not create artificial dependencies just to make the workflow longer.
+- If two tasks can safely happen in parallel, they should not depend on each other.
+
+
+COLLABORATION CONTEXT:
+
+contextFromTaskIndexes controls which completed task results should be given to the assigned agent.
+
+Use it when an agent needs to understand or build upon earlier work.
+
+Examples:
+
+Pixel may receive Atlas's strategy.
+
+CodeBot may receive Pixel's design.
+
+CodeBot may receive both Atlas's business requirements and Pixel's UI specification.
+
+Forge may receive Pixel's game UI specification.
+
+Sage may receive CodeBot's technical system explanation when preparing documentation.
+
+
+GENERAL RULES:
+
+- Do NOT assign every agent unless necessary.
+- You may assign multiple tasks to one agent when justified.
+- Valid may assign planning or coordination work to itself when required.
+- Tasks must be specific and actionable.
+- Avoid vague assignments.
+- Avoid duplicate tasks.
+- Match tasks to agent expertise.
+- Prefer approximately 2 to 6 tasks for a normal mission.
+- Think about execution order before creating dependencies.
+
 
 Return ONLY valid JSON.
 
 Do not use markdown.
 
-Do not place the JSON inside a code block.
+Do not wrap the JSON in backticks.
+
+Do not include commentary before or after the JSON.
 
 Use exactly this structure:
 
 {
-  "analysis": "Short explanation of how the mission should be handled.",
+  "analysis": "Short CEO analysis of how the mission should be executed.",
   "tasks": [
     {
       "title": "Specific task title",
-      "description": "Detailed instructions for the specialist.",
-      "assignedAgent": 2
+      "description": "Detailed instructions for the assigned specialist.",
+      "assignedAgent": 5,
+      "dependsOnTaskIndexes": [],
+      "contextFromTaskIndexes": []
+    },
+    {
+      "title": "Specific dependent task",
+      "description": "Detailed instructions that build upon earlier work.",
+      "assignedAgent": 3,
+      "dependsOnTaskIndexes": [0],
+      "contextFromTaskIndexes": [0]
     }
   ]
 }
 
-RULES:
+
+FINAL RULES:
 
 - assignedAgent must be a number from 1 to 6.
-- Create only useful tasks.
-- Prefer approximately 2 to 6 tasks for a normal mission.
-- Do not create duplicate tasks.
-- Do not invent additional agents.
-- Match tasks to agent specialities.
-- Keep task descriptions practical.
+- dependsOnTaskIndexes must contain valid earlier task indexes only.
+- contextFromTaskIndexes must contain valid earlier task indexes only.
+- Never reference indexes that do not exist.
+- Never create circular dependencies.
 - Do not include commentary outside the JSON.
   `.trim();
+}
+
+/*
+  SANITIZE TASK INDEXES
+
+  AI-generated dependency indexes
+  must never be trusted directly.
+
+  Rules:
+  - integer only
+  - zero or greater
+  - must exist
+  - must point to an earlier task
+  - must not duplicate
+*/
+
+function sanitizeTaskIndexes(
+  value: number[] | undefined,
+  taskCount: number,
+  currentTaskIndex: number,
+): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const safeIndexes = value.filter(
+    (index) =>
+      Number.isInteger(index) &&
+      index >= 0 &&
+      index < taskCount &&
+      index < currentTaskIndex,
+  );
+
+  return [...new Set(safeIndexes)];
 }
 
 /*
@@ -552,10 +684,29 @@ function isValidOrchestrationResult(
 
     const candidate = task as Record<string, unknown>;
 
-    return (
+    const validBasicFields =
       typeof candidate.title === "string" &&
       typeof candidate.description === "string" &&
-      typeof candidate.assignedAgent === "number"
-    );
+      typeof candidate.assignedAgent === "number";
+
+    if (!validBasicFields) {
+      return false;
+    }
+
+    const validDependsOn =
+      candidate.dependsOnTaskIndexes === undefined ||
+      (Array.isArray(candidate.dependsOnTaskIndexes) &&
+        candidate.dependsOnTaskIndexes.every(
+          (item) => typeof item === "number",
+        ));
+
+    const validContext =
+      candidate.contextFromTaskIndexes === undefined ||
+      (Array.isArray(candidate.contextFromTaskIndexes) &&
+        candidate.contextFromTaskIndexes.every(
+          (item) => typeof item === "number",
+        ));
+
+    return validDependsOn && validContext;
   });
 }

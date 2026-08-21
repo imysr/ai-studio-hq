@@ -14,6 +14,10 @@ export type MissionTask = {
   progress: number;
 
   result?: string;
+
+  dependsOn?: number[];
+
+  contextFromTasks?: number[];
 };
 
 export const defaultTasks: MissionTask[] = [
@@ -33,6 +37,10 @@ export const defaultTasks: MissionTask[] = [
     progress: 0,
 
     result: "",
+
+    dependsOn: [],
+
+    contextFromTasks: [],
   },
 
   {
@@ -52,6 +60,10 @@ export const defaultTasks: MissionTask[] = [
     progress: 0,
 
     result: "",
+
+    dependsOn: [1],
+
+    contextFromTasks: [1],
   },
 
   {
@@ -70,6 +82,10 @@ export const defaultTasks: MissionTask[] = [
     progress: 0,
 
     result: "",
+
+    dependsOn: [1],
+
+    contextFromTasks: [1],
   },
 
   {
@@ -88,5 +104,9 @@ export const defaultTasks: MissionTask[] = [
     progress: 0,
 
     result: "",
+
+    dependsOn: [1],
+
+    contextFromTasks: [1],
   },
 ];

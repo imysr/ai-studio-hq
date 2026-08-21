@@ -254,6 +254,94 @@ export async function retryAgentTask(taskId: number) {
 }
 
 /*
+  BUILD COLLABORATION CONTEXT
+
+  If Valid instructed this task to use
+  results from previous tasks, collect
+  those completed results and include
+  them in the next agent's instructions.
+*/
+
+function buildCollaborationInstructions(task: MissionTask): string {
+  const contextTaskIds = task.contextFromTasks ?? [];
+
+  /*
+    No collaboration context required.
+
+    Keep the original task description.
+  */
+
+  if (contextTaskIds.length === 0) {
+    return task.description;
+  }
+
+  const allTasks = getTasks();
+
+  const contextTasks = contextTaskIds
+    .map((taskId) => allTasks.find((item) => item.id === taskId))
+    .filter((item): item is MissionTask =>
+      Boolean(item && item.status === "Completed" && item.result?.trim()),
+    );
+
+  /*
+    If no usable completed results were
+    found, fall back safely to the
+    original instructions.
+  */
+
+  if (contextTasks.length === 0) {
+    return task.description;
+  }
+
+  const collaborationContext = contextTasks
+    .map((contextTask, index) => {
+      const contextAgent = agents.find(
+        (agent) => agent.id === contextTask.assignedAgent,
+      );
+
+      return `
+COLLABORATOR ${index + 1}
+
+Agent:
+${contextAgent?.name ?? "AI Agent"}
+
+Previous Task:
+${contextTask.title}
+
+Completed Result:
+${contextTask.result}
+        `.trim();
+    })
+    .join("\n\n------------------------------\n\n");
+
+  return `
+PRIMARY TASK
+
+${task.description}
+
+
+COLLABORATION CONTEXT
+
+The following work was completed by other AI agents earlier in this mission.
+
+Use this information when it is relevant to your assignment.
+
+Do not simply repeat their work.
+
+Build upon it, improve it, or use it as input for your own specialist task.
+
+${collaborationContext}
+
+
+YOUR RESPONSIBILITY
+
+Complete your own assigned task using the collaboration context above where useful.
+
+Your response should remain focused on your own specialist responsibility.
+  `.trim();
+}
+
+/*
   REQUEST AI RESULT
 
   Handles automatic retries.
@@ -287,7 +375,7 @@ async function requestAIResult(
 
           taskTitle: task.title,
 
-          instructions: task.description,
+          instructions: buildCollaborationInstructions(task),
         }),
       });
 
