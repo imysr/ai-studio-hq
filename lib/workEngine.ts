@@ -13,7 +13,7 @@ import type { MissionTask } from "@/data/tasks";
   Other agents still use local template results.
 */
 
-const REAL_AI_AGENTS = [2, 3, 4, 5, 6];
+const REAL_AI_AGENTS = [1, 2, 3, 4, 5, 6];
 
 const workLocations: Record<number, string> = {
   1: "CEO Office",
