@@ -6,6 +6,21 @@ export type ManagerMemory = {
   decision: string;
 
   createdAt: string;
+
+  /*
+    FINAL MISSION DELIVERABLE
+
+    Created by Valid after all mission
+    tasks have been completed.
+
+    This combines the work of the
+    specialist agents into one final
+    CEO-level mission review.
+  */
+
+  finalDeliverable?: string;
+
+  finalDeliverableCreatedAt?: string;
 };
 
 const STORAGE_KEY = "managerMemory";

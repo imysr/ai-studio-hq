@@ -10,6 +10,10 @@ export type Mission = {
   progress: number;
 
   assignedAgents: number[];
+
+  finalDeliverable?: string;
+
+  finalDeliverableCreatedAt?: string;
 };
 
 export const defaultMissions: Mission[] = [
@@ -26,5 +30,9 @@ export const defaultMissions: Mission[] = [
     progress: 25,
 
     assignedAgents: [1, 2, 3],
+
+    finalDeliverable: "",
+
+    finalDeliverableCreatedAt: "",
   },
 ];

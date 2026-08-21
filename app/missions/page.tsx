@@ -8,6 +8,7 @@ import { defaultMissions, type Mission } from "@/data/missions";
 import type { MissionTask } from "@/data/tasks";
 
 import { getMissions, saveMissions } from "@/lib/missionStorage";
+
 import { saveTasks, getTasks } from "@/lib/taskStorage";
 
 import { startAgentTask, completeAgentTask } from "@/lib/workEngine";
@@ -20,18 +21,24 @@ import {
 import { generateMissionTasks, type DelegatedTask } from "@/lib/taskGenerator";
 
 import { saveMissionMemory } from "@/lib/missionMemory";
+
 import { saveAgentMemory } from "@/lib/agentMemory";
 
 import { recordMissionAnalysis, createManagerReport } from "@/lib/aiManager";
 
-import { saveManagerMemory } from "@/lib/managerMemory";
+import { getManagerMemory, saveManagerMemory } from "@/lib/managerMemory";
 
 type AgentMemory = {
   id: number;
+
   currentTask: string;
+
   missionStatus: string;
+
   location: string;
+
   energy: number;
+
   lastAction: string;
 };
 
@@ -41,6 +48,14 @@ type OrchestrationResponse = {
   analysis?: string;
 
   tasks?: DelegatedTask[];
+
+  error?: string;
+};
+
+type FinalReviewResponse = {
+  success?: boolean;
+
+  finalDeliverable?: string;
 
   error?: string;
 };
@@ -64,7 +79,40 @@ export default function Missions() {
 
   const [planningError, setPlanningError] = useState("");
 
+  /*
+    FINAL REVIEW STATE
+  */
+
+  const [reviewingMissionId, setReviewingMissionId] = useState<number | null>(
+    null,
+  );
+
+  const [finalDeliverables, setFinalDeliverables] = useState<
+    Record<number, string>
+  >(() => {
+    const savedMissions = getMissions();
+
+    const savedReviews: Record<number, string> = {};
+
+    savedMissions.forEach((mission) => {
+      if (mission.finalDeliverable) {
+        savedReviews[mission.id] = mission.finalDeliverable;
+      }
+    });
+
+    return savedReviews;
+  });
+
+  const [reviewErrors, setReviewErrors] = useState<Record<number, string>>({});
+
   const [, refresh] = useState(0);
+
+  /*
+    MANUAL TASK START
+
+    The scheduler usually handles this,
+    but we keep the button available.
+  */
 
   function handleStartTask(taskId: number) {
     startAgentTask(taskId);
@@ -76,6 +124,12 @@ export default function Missions() {
     refresh((value) => value + 1);
   }
 
+  /*
+    MANUAL TASK COMPLETE
+
+    Real AI agents will use Gemini.
+  */
+
   async function handleCompleteTask(taskId: number) {
     await completeAgentTask(taskId);
 
@@ -84,6 +138,198 @@ export default function Missions() {
     setTasks([...updatedTasks]);
 
     refresh((value) => value + 1);
+  }
+
+  /*
+    VALID FINAL MISSION REVIEW
+
+    All specialist work:
+        ↓
+    Valid reads results
+        ↓
+    Final CEO deliverable
+  */
+
+  async function handleGenerateFinalReview(mission: Mission) {
+    if (reviewingMissionId !== null) {
+      return;
+    }
+
+    const latestTasks = getTasks();
+
+    const missionTasks = latestTasks.filter(
+      (task) => task.missionId === mission.id,
+    );
+
+    const completedTasks = missionTasks.filter(
+      (task) => task.status === "Completed" && Boolean(task.result?.trim()),
+    );
+
+    if (missionTasks.length === 0) {
+      setReviewErrors((current) => ({
+        ...current,
+
+        [mission.id]: "This mission does not have any tasks.",
+      }));
+
+      return;
+    }
+
+    if (completedTasks.length !== missionTasks.length) {
+      setReviewErrors((current) => ({
+        ...current,
+
+        [mission.id]:
+          "All mission tasks must be completed before Valid can create the final review.",
+      }));
+
+      return;
+    }
+
+    setReviewingMissionId(mission.id);
+
+    setReviewErrors((current) => ({
+      ...current,
+
+      [mission.id]: "",
+    }));
+
+    try {
+      /*
+        PREPARE SPECIALIST
+        RESULTS FOR VALID
+      */
+
+      const reviewTasks = completedTasks.map((task) => {
+        const assignedAgent = agents.find(
+          (agent) => agent.id === task.assignedAgent,
+        );
+
+        return {
+          title: task.title,
+
+          description: task.description,
+
+          assignedAgent: task.assignedAgent,
+
+          agentName: assignedAgent?.name ?? "AI Agent",
+
+          result: task.result ?? "",
+        };
+      });
+
+      /*
+        CALL FINAL REVIEW API
+      */
+
+      const response = await fetch("/api/final-review", {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+          missionTitle: mission.title,
+
+          missionDescription: mission.description,
+
+          completedTasks: reviewTasks,
+        }),
+      });
+
+      const data = (await response.json()) as FinalReviewResponse;
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ?? "Valid failed to create the final mission review.",
+        );
+      }
+
+      if (!data.finalDeliverable) {
+        throw new Error("Valid returned an empty final mission review.");
+      }
+
+      /*
+        DISPLAY RESULT
+      */
+
+      setFinalDeliverables((current) => ({
+        ...current,
+
+        [mission.id]: data.finalDeliverable as string,
+      }));
+
+      /*
+  PERSIST FINAL DELIVERABLE
+  INSIDE THE MISSION
+*/
+
+      const latestMissions = getMissions();
+
+      const updatedMissions = latestMissions.map((item) => {
+        if (item.id !== mission.id) {
+          return item;
+        }
+
+        return {
+          ...item,
+
+          finalDeliverable: data.finalDeliverable,
+
+          finalDeliverableCreatedAt: new Date().toISOString(),
+        };
+      });
+
+      saveMissions(updatedMissions);
+
+      setMissions(updatedMissions);
+
+      /*
+        SAVE INTO VALID
+        MANAGER MEMORY
+      */
+
+      const currentMemory = getManagerMemory();
+
+      saveManagerMemory({
+        missionTitle: mission.title,
+
+        analysis:
+          currentMemory?.missionTitle === mission.title
+            ? currentMemory.analysis
+            : "Mission completed and reviewed by Valid.",
+
+        decision:
+          currentMemory?.missionTitle === mission.title
+            ? currentMemory.decision
+            : "Valid completed the final CEO review.",
+
+        createdAt:
+          currentMemory?.missionTitle === mission.title
+            ? currentMemory.createdAt
+            : new Date().toISOString(),
+
+        finalDeliverable: data.finalDeliverable,
+
+        finalDeliverableCreatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Final mission review error:", error);
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Valid failed to create the final mission review.";
+
+      setReviewErrors((current) => ({
+        ...current,
+
+        [mission.id]: message,
+      }));
+    } finally {
+      setReviewingMissionId(null);
+    }
   }
 
   /*
@@ -101,7 +347,9 @@ export default function Missions() {
       ↓
     Valid creates tasks
       ↓
-    Tasks appear in agent rooms
+    Valid creates dependencies
+      ↓
+    Agents collaborate
   */
 
   async function launchMission() {
@@ -167,14 +415,18 @@ export default function Missions() {
 
       /*
         TURN VALID'S PLAN
-        INTO REAL MISSION TASKS
+        INTO REAL TASKS
+
+        taskGenerator also converts
+        Valid's dependency indexes
+        into real task IDs.
       */
 
       const newTasks = generateMissionTasks(missionId, data.tasks);
 
       /*
         FIND WHICH AGENTS
-        VALID ACTUALLY CHOSE
+        VALID CHOSE
       */
 
       const assignedAgentIds = [
@@ -182,7 +434,7 @@ export default function Missions() {
       ];
 
       /*
-        CREATE THE MISSION
+        CREATE MISSION
       */
 
       const newMission: Mission = {
@@ -200,7 +452,7 @@ export default function Missions() {
       };
 
       /*
-        SAVE MISSIONS
+        SAVE MISSION
       */
 
       const updatedMissions = [...missions, newMission];
@@ -210,7 +462,7 @@ export default function Missions() {
       saveMissions(updatedMissions);
 
       /*
-        SAVE VALID'S GENERATED TASKS
+        SAVE GENERATED TASKS
       */
 
       const currentTasks = getTasks();
@@ -222,7 +474,7 @@ export default function Missions() {
       setTasks(updatedTasks);
 
       /*
-        SAVE MISSION MEMORY
+        MISSION MEMORY
       */
 
       saveMissionMemory({
@@ -232,20 +484,20 @@ export default function Missions() {
       });
 
       /*
-        RECORD VALID ACTIVITY
+        VALID ACTIVITY
       */
 
       recordMissionAnalysis(newMission);
 
       /*
-        CREATE MANAGER REPORT
+        MANAGER REPORT
       */
 
       const report = createManagerReport(newMission, newTasks);
 
       /*
-        SAVE VALID'S REAL
-        GEMINI ANALYSIS
+        SAVE VALID'S
+        INITIAL ANALYSIS
       */
 
       saveManagerMemory({
@@ -269,10 +521,12 @@ export default function Missions() {
       /*
         UPDATE AGENT MEMORY
 
-        Agents selected by Valid receive
-        their first mission task.
+        Agents chosen by Valid
+        receive their first task.
 
-        Everyone else remains idle.
+        Some tasks may remain blocked
+        by dependencies until earlier
+        agents complete their work.
       */
 
       const memories: AgentMemory[] = agents.map((agent) => {
@@ -316,7 +570,7 @@ export default function Missions() {
       saveAgentMemory(memories);
 
       /*
-        SUCCESS UI
+        SUCCESS
       */
 
       setPlanningMessage(
@@ -388,8 +642,8 @@ export default function Missions() {
           text-lg
           "
         >
-          Give Valid one mission. Valid will analyse it and delegate work to the
-          AI team.
+          Give Valid one mission. Valid will analyse it, choose the right
+          departments, and manage the AI team.
         </p>
 
         {/* CREATE MISSION */}
@@ -511,8 +765,6 @@ export default function Missions() {
             "
           />
 
-          {/* VALID INFO */}
-
           <div
             className="
             mt-8
@@ -549,9 +801,8 @@ export default function Missions() {
                   leading-6
                   "
                 >
-                  You no longer need to manually choose agents. Valid will
-                  analyse the mission and select only the specialists that are
-                  actually required.
+                  Valid analyses the mission, chooses the correct specialists,
+                  creates task dependencies, and coordinates the AI company.
                 </p>
               </div>
             </div>
@@ -702,7 +953,7 @@ export default function Missions() {
                   </span>
                 </div>
 
-                {/* DEPARTMENTS */}
+                {/* AGENTS */}
 
                 {mission.assignedAgents.length > 0 && (
                   <div className="mt-6">
@@ -812,6 +1063,10 @@ export default function Missions() {
                         (agent) => agent.id === task.assignedAgent,
                       );
 
+                      const dependencyCount = task.dependsOn?.length ?? 0;
+
+                      const contextCount = task.contextFromTasks?.length ?? 0;
+
                       return (
                         <div
                           key={task.id}
@@ -877,6 +1132,53 @@ export default function Missions() {
                           >
                             {task.description}
                           </p>
+
+                          {(dependencyCount > 0 || contextCount > 0) && (
+                            <div
+                              className="
+                                  mt-4
+                                  flex
+                                  flex-wrap
+                                  gap-2
+                                  "
+                            >
+                              {dependencyCount > 0 && (
+                                <span
+                                  className="
+                                      text-xs
+                                      border
+                                      border-yellow-500/20
+                                      bg-yellow-500/10
+                                      text-yellow-300
+                                      rounded-full
+                                      px-3
+                                      py-1
+                                      "
+                                >
+                                  ⛓ {dependencyCount} dependency
+                                  {dependencyCount !== 1 ? "ies" : ""}
+                                </span>
+                              )}
+
+                              {contextCount > 0 && (
+                                <span
+                                  className="
+                                      text-xs
+                                      border
+                                      border-blue-500/20
+                                      bg-blue-500/10
+                                      text-blue-300
+                                      rounded-full
+                                      px-3
+                                      py-1
+                                      "
+                                >
+                                  🤝 Uses {contextCount} collaborator result
+                                  {contextCount !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </div>
+                          )}
 
                           <div
                             className="
@@ -979,6 +1281,148 @@ export default function Missions() {
                     })
                   )}
                 </div>
+
+                {/* FINAL CEO REVIEW */}
+
+                {missionProgress === 100 && (
+                  <div
+                    className="
+                      mt-8
+                      border-t
+                      border-white/10
+                      pt-8
+                      "
+                  >
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        gap-5
+                        flex-wrap
+                        "
+                    >
+                      <div>
+                        <h4
+                          className="
+                            text-2xl
+                            font-bold
+                            "
+                        >
+                          🧠 Valid Final Review
+                        </h4>
+
+                        <p
+                          className="
+                            text-gray-500
+                            mt-2
+                            "
+                        >
+                          Valid can now review all completed specialist work and
+                          prepare one final mission deliverable.
+                        </p>
+                      </div>
+
+                      {!finalDeliverables[mission.id] && (
+                        <button
+                          type="button"
+                          disabled={reviewingMissionId !== null}
+                          onClick={() => handleGenerateFinalReview(mission)}
+                          className="
+                            bg-purple-600
+                            hover:bg-purple-500
+                            disabled:bg-purple-950
+                            disabled:text-gray-500
+                            disabled:cursor-not-allowed
+                            px-5
+                            py-3
+                            rounded-xl
+                            font-semibold
+                            transition
+                            "
+                        >
+                          {reviewingMissionId === mission.id
+                            ? "🧠 Valid is reviewing team work..."
+                            : "🧠 Generate Final Review"}
+                        </button>
+                      )}
+                    </div>
+
+                    {reviewErrors[mission.id] && (
+                      <div
+                        className="
+                          mt-5
+                          bg-red-950/30
+                          border
+                          border-red-500/30
+                          rounded-xl
+                          p-4
+                          text-red-300
+                          text-sm
+                          "
+                      >
+                        {reviewErrors[mission.id]}
+                      </div>
+                    )}
+
+                    {finalDeliverables[mission.id] && (
+                      <div
+                        className="
+                          mt-6
+                          bg-[#080808]
+                          border
+                          border-purple-500/30
+                          rounded-2xl
+                          p-6
+                          "
+                      >
+                        <div
+                          className="
+                            flex
+                            items-center
+                            gap-3
+                            "
+                        >
+                          <span className="text-3xl">📦</span>
+
+                          <div>
+                            <p
+                              className="
+                                font-bold
+                                text-xl
+                                "
+                            >
+                              Final Mission Deliverable
+                            </p>
+
+                            <p
+                              className="
+                                text-sm
+                                text-gray-500
+                                mt-1
+                                "
+                            >
+                              Reviewed and prepared by Valid
+                            </p>
+                          </div>
+                        </div>
+
+                        <pre
+                          className="
+                            whitespace-pre-wrap
+                            font-sans
+                            text-sm
+                            text-gray-300
+                            leading-7
+                            mt-6
+                            "
+                        >
+                          {finalDeliverables[mission.id]}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
