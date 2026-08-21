@@ -7,6 +7,8 @@ import { agents } from "@/data/agents";
 import { defaultMissions, type Mission } from "@/data/missions";
 import type { MissionTask } from "@/data/tasks";
 
+import MissionCard from "@/app/missions/components/MissionCard";
+
 import { getMissions, saveMissions } from "@/lib/missionStorage";
 
 import { saveTasks, getTasks } from "@/lib/taskStorage";
@@ -66,31 +68,17 @@ export default function Missions() {
 
   const [planningError, setPlanningError] = useState("");
 
-  /*
-    FINAL REVIEW STATE
-  */
-
   const [reviewingMissionId, setReviewingMissionId] = useState<number | null>(
     null,
   );
 
-  const [finalDeliverables, setFinalDeliverables] = useState<
-    Record<number, string>
-  >(() => {
-    const savedMissions = getMissions();
-
-    const savedReviews: Record<number, string> = {};
-
-    savedMissions.forEach((mission) => {
-      if (mission.finalDeliverable) {
-        savedReviews[mission.id] = mission.finalDeliverable;
-      }
-    });
-
-    return savedReviews;
-  });
-
   const [reviewErrors, setReviewErrors] = useState<Record<number, string>>({});
+
+  /*
+    SEARCH
+  */
+
+  const [searchQuery, setSearchQuery] = useState("");
 
   /*
     VALID FINAL MISSION REVIEW
@@ -136,6 +124,7 @@ export default function Missions() {
 
     setReviewErrors((current) => ({
       ...current,
+
       [mission.id]: "",
     }));
 
@@ -189,12 +178,6 @@ export default function Missions() {
       /*
         DISPLAY RESULT
       */
-
-      setFinalDeliverables((current) => ({
-        ...current,
-
-        [mission.id]: data.finalDeliverable as string,
-      }));
 
       /*
         PERSIST FINAL DELIVERABLE
@@ -455,6 +438,39 @@ export default function Missions() {
     }
   }
 
+  /*
+    ORGANISE MISSION HISTORY
+  */
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+
+  const filteredMissions = missions.filter((mission) => {
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return (
+      mission.title.toLowerCase().includes(normalizedSearch) ||
+      mission.description.toLowerCase().includes(normalizedSearch)
+    );
+  });
+
+  /*
+    Newest first.
+
+    Mission IDs are created using
+    Date.now(), so larger IDs are
+    newer missions.
+  */
+
+  const activeMissions = filteredMissions
+    .filter((mission) => calculateMissionProgress(mission.id) < 100)
+    .sort((a, b) => b.id - a.id);
+
+  const completedMissions = filteredMissions
+    .filter((mission) => calculateMissionProgress(mission.id) === 100)
+    .sort((a, b) => b.id - a.id);
+
   return (
     <main
       className="
@@ -572,7 +588,7 @@ export default function Missions() {
 
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(event) => setTitle(event.target.value)}
             placeholder="What should AI Studio HQ accomplish?"
             disabled={isPlanning}
             className="
@@ -602,7 +618,7 @@ export default function Missions() {
 
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="Describe the mission, requirements, goals and constraints..."
             disabled={isPlanning}
             className="
@@ -726,405 +742,368 @@ export default function Missions() {
           )}
         </section>
 
-        {/* MISSIONS */}
+        {/* MISSION HISTORY */}
 
-        <section className="mt-10">
-          <h2
+        <section className="mt-12">
+          <div
             className="
-            text-3xl
-            font-bold
+            flex
+            items-end
+            justify-between
+            gap-6
+            flex-wrap
             "
           >
-            Mission History
-          </h2>
-
-          <p
-            className="
-            text-gray-500
-            mt-2
-            "
-          >
-            Open a mission to view its complete workflow, agent results and
-            final deliverable.
-          </p>
-
-          {missions.map((mission) => {
-            const missionProgress = calculateMissionProgress(mission.id);
-
-            const missionStatus = calculateMissionStatus(mission.id);
-
-            const missionTasks = tasks.filter(
-              (task) => task.missionId === mission.id,
-            );
-
-            const completedTaskCount = missionTasks.filter(
-              (task) => task.status === "Completed",
-            ).length;
-
-            return (
-              <div
-                key={mission.id}
+            <div>
+              <h2
                 className="
-                  mt-6
-                  bg-[#080808]
-                  border
-                  border-white/10
-                  rounded-3xl
-                  p-8
-                  "
+                text-3xl
+                font-bold
+                "
               >
-                <div
+                Mission History
+              </h2>
+
+              <p
+                className="
+                text-gray-500
+                mt-2
+                "
+              >
+                Track active work and revisit completed AI company missions.
+              </p>
+            </div>
+
+            {/* SEARCH */}
+
+            <div
+              className="
+              w-full
+              md:w-[360px]
+              "
+            >
+              <label
+                className="
+                block
+                text-xs
+                uppercase
+                tracking-widest
+                text-gray-600
+                mb-2
+                "
+              >
+                🔎 Search Missions
+              </label>
+
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search title or description..."
+                className="
+                w-full
+                bg-[#080808]
+                border
+                border-white/10
+                rounded-xl
+                px-4
+                py-3
+                outline-none
+                text-sm
+                focus:border-white/30
+                "
+              />
+            </div>
+          </div>
+
+          {/* HISTORY STATS */}
+
+          <div
+            className="
+            grid
+            md:grid-cols-3
+            gap-4
+            mt-8
+            "
+          >
+            <div
+              className="
+              bg-[#080808]
+              border
+              border-white/10
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-gray-500
+                text-sm
+                "
+              >
+                Total Missions
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {filteredMissions.length}
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-[#080808]
+              border
+              border-blue-500/20
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-blue-400
+                text-sm
+                "
+              >
+                Active
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {activeMissions.length}
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-[#080808]
+              border
+              border-green-500/20
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-green-400
+                text-sm
+                "
+              >
+                Completed
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {completedMissions.length}
+              </p>
+            </div>
+          </div>
+
+          {/* ACTIVE MISSIONS */}
+
+          <div className="mt-12">
+            <div
+              className="
+              flex
+              items-center
+              justify-between
+              gap-4
+              "
+            >
+              <div>
+                <h3
                   className="
-                    flex
-                    items-start
-                    justify-between
-                    gap-6
-                    flex-wrap
-                    "
+                  text-2xl
+                  font-bold
+                  "
                 >
-                  <div
-                    className="
-                      max-w-3xl
-                      "
-                  >
-                    <h3
-                      className="
-                        text-3xl
-                        font-bold
-                        "
-                    >
-                      {mission.title}
-                    </h3>
+                  🔵 Active Missions
+                </h3>
 
-                    <p
-                      className="
-                        text-gray-400
-                        mt-2
-                        leading-6
-                        "
-                    >
-                      {mission.description}
-                    </p>
-
-                    <Link
-                      href={`/missions/${mission.id}`}
-                      className="
-                        inline-flex
-                        items-center
-                        gap-2
-                        mt-5
-                        text-sm
-                        border
-                        border-white/10
-                        bg-black
-                        hover:border-white/30
-                        rounded-xl
-                        px-4
-                        py-2
-                        transition
-                        "
-                    >
-                      Open Mission →
-                    </Link>
-                  </div>
-
-                  <span
-                    className={`
-                      px-4
-                      py-2
-                      rounded-full
-                      border
-                      text-sm
-
-                      ${
-                        missionStatus === "Completed"
-                          ? "border-green-500/30 bg-green-500/10 text-green-400"
-                          : missionStatus === "Active"
-                            ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
-                            : "border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
-                      }
-                      `}
-                  >
-                    {missionStatus}
-                  </span>
-                </div>
-
-                {/* AGENTS */}
-
-                {mission.assignedAgents.length > 0 && (
-                  <div className="mt-6">
-                    <p
-                      className="
-                        text-gray-500
-                        text-sm
-                        "
-                    >
-                      Valid assigned:
-                    </p>
-
-                    <div
-                      className="
-                        flex
-                        flex-wrap
-                        gap-3
-                        mt-3
-                        "
-                    >
-                      {mission.assignedAgents.map((agentId) => {
-                        const agent = agents.find(
-                          (item) => item.id === agentId,
-                        );
-
-                        return (
-                          <span
-                            key={agentId}
-                            className="
-                                bg-black
-                                border
-                                border-white/10
-                                rounded-full
-                                px-4
-                                py-2
-                                text-sm
-                                "
-                          >
-                            {agent?.emoji} {agent?.name ?? `Agent ${agentId}`}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* PROGRESS */}
-
-                <div className="mt-6">
-                  <div
-                    className="
-                      flex
-                      justify-between
-                      text-sm
-                      "
-                  >
-                    <span className="text-gray-500">Progress</span>
-
-                    <span>{missionProgress}%</span>
-                  </div>
-
-                  <div
-                    className="
-                      w-full
-                      h-3
-                      bg-black
-                      border
-                      border-white/10
-                      rounded-full
-                      mt-2
-                      overflow-hidden
-                      "
-                  >
-                    <div
-                      className="
-                        h-full
-                        bg-white
-                        rounded-full
-                        transition-all
-                        "
-                      style={{
-                        width: `${missionProgress}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* SUMMARY */}
-
-                <div
+                <p
                   className="
-                    grid
-                    md:grid-cols-3
-                    gap-4
-                    mt-6
-                    "
+                  text-gray-600
+                  text-sm
+                  mt-1
+                  "
                 >
-                  <div
-                    className="
-                      bg-black
-                      border
-                      border-white/10
-                      rounded-xl
-                      p-4
-                      "
-                  >
-                    <p
-                      className="
-                        text-gray-500
-                        text-sm
-                        "
-                    >
-                      Tasks
-                    </p>
-
-                    <p
-                      className="
-                        text-xl
-                        font-bold
-                        mt-1
-                        "
-                    >
-                      {missionTasks.length}
-                    </p>
-                  </div>
-
-                  <div
-                    className="
-                      bg-black
-                      border
-                      border-white/10
-                      rounded-xl
-                      p-4
-                      "
-                  >
-                    <p
-                      className="
-                        text-gray-500
-                        text-sm
-                        "
-                    >
-                      Completed
-                    </p>
-
-                    <p
-                      className="
-                        text-xl
-                        font-bold
-                        mt-1
-                        "
-                    >
-                      {completedTaskCount}
-                    </p>
-                  </div>
-
-                  <div
-                    className="
-                      bg-black
-                      border
-                      border-white/10
-                      rounded-xl
-                      p-4
-                      "
-                  >
-                    <p
-                      className="
-                        text-gray-500
-                        text-sm
-                        "
-                    >
-                      Final Review
-                    </p>
-
-                    <p
-                      className={`
-                        text-sm
-                        font-semibold
-                        mt-2
-
-                        ${
-                          mission.finalDeliverable
-                            ? "text-green-400"
-                            : "text-gray-500"
-                        }
-                        `}
-                    >
-                      {mission.finalDeliverable
-                        ? "✓ Available"
-                        : "Not generated"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* FINAL REVIEW */}
-
-                {missionProgress === 100 && !mission.finalDeliverable && (
-                  <div
-                    className="
-                        mt-6
-                        border-t
-                        border-white/10
-                        pt-6
-                        "
-                  >
-                    <button
-                      type="button"
-                      disabled={reviewingMissionId !== null}
-                      onClick={() => handleGenerateFinalReview(mission)}
-                      className="
-                          bg-purple-600
-                          hover:bg-purple-500
-                          disabled:bg-purple-950
-                          disabled:text-gray-500
-                          disabled:cursor-not-allowed
-                          px-5
-                          py-3
-                          rounded-xl
-                          font-semibold
-                          transition
-                          "
-                    >
-                      {reviewingMissionId === mission.id
-                        ? "🧠 Valid is reviewing team work..."
-                        : "🧠 Generate Final Review"}
-                    </button>
-
-                    {reviewErrors[mission.id] && (
-                      <p
-                        className="
-                            text-red-400
-                            mt-3
-                            text-sm
-                            "
-                      >
-                        {reviewErrors[mission.id]}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {finalDeliverables[mission.id] && (
-                  <div
-                    className="
-                      mt-6
-                      border-t
-                      border-white/10
-                      pt-5
-                      "
-                  >
-                    <p
-                      className="
-                        text-purple-300
-                        text-sm
-                        "
-                    >
-                      📦 Valid has prepared the final mission deliverable.
-                    </p>
-
-                    <Link
-                      href={`/missions/${mission.id}`}
-                      className="
-                        inline-block
-                        mt-3
-                        text-sm
-                        text-white
-                        hover:text-purple-300
-                        "
-                    >
-                      View Final Deliverable →
-                    </Link>
-                  </div>
-                )}
+                  Missions still being planned or worked on by the AI team.
+                </p>
               </div>
-            );
-          })}
+
+              <span
+                className="
+                bg-blue-500/10
+                border
+                border-blue-500/20
+                text-blue-400
+                rounded-full
+                px-4
+                py-2
+                text-sm
+                "
+              >
+                {activeMissions.length}
+              </span>
+            </div>
+
+            {activeMissions.length === 0 ? (
+              <div
+                className="
+                mt-5
+                bg-[#080808]
+                border
+                border-white/10
+                rounded-2xl
+                p-8
+                text-gray-500
+                "
+              >
+                {normalizedSearch
+                  ? "No active missions match your search."
+                  : "No active missions right now."}
+              </div>
+            ) : (
+              <div
+                className="
+                mt-5
+                space-y-6
+                "
+              >
+                {activeMissions.map((mission) => {
+                  const missionTasks = tasks.filter(
+                    (task) => task.missionId === mission.id,
+                  );
+
+                  return (
+                    <MissionCard
+                      key={mission.id}
+                      mission={mission}
+                      tasks={missionTasks}
+                      missionProgress={calculateMissionProgress(mission.id)}
+                      missionStatus={calculateMissionStatus(mission.id)}
+                      finalDeliverableAvailable={Boolean(
+                        mission.finalDeliverable,
+                      )}
+                      reviewingMissionId={reviewingMissionId}
+                      reviewError={reviewErrors[mission.id]}
+                      onGenerateFinalReview={handleGenerateFinalReview}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* COMPLETED MISSIONS */}
+
+          <div className="mt-14">
+            <div
+              className="
+              flex
+              items-center
+              justify-between
+              gap-4
+              "
+            >
+              <div>
+                <h3
+                  className="
+                  text-2xl
+                  font-bold
+                  "
+                >
+                  🟢 Completed Missions
+                </h3>
+
+                <p
+                  className="
+                  text-gray-600
+                  text-sm
+                  mt-1
+                  "
+                >
+                  Finished AI company missions and Valid deliverables.
+                </p>
+              </div>
+
+              <span
+                className="
+                bg-green-500/10
+                border
+                border-green-500/20
+                text-green-400
+                rounded-full
+                px-4
+                py-2
+                text-sm
+                "
+              >
+                {completedMissions.length}
+              </span>
+            </div>
+
+            {completedMissions.length === 0 ? (
+              <div
+                className="
+                mt-5
+                bg-[#080808]
+                border
+                border-white/10
+                rounded-2xl
+                p-8
+                text-gray-500
+                "
+              >
+                {normalizedSearch
+                  ? "No completed missions match your search."
+                  : "No completed missions yet."}
+              </div>
+            ) : (
+              <div
+                className="
+                mt-5
+                space-y-6
+                "
+              >
+                {completedMissions.map((mission) => {
+                  const missionTasks = tasks.filter(
+                    (task) => task.missionId === mission.id,
+                  );
+
+                  return (
+                    <MissionCard
+                      key={mission.id}
+                      mission={mission}
+                      tasks={missionTasks}
+                      missionProgress={calculateMissionProgress(mission.id)}
+                      missionStatus={calculateMissionStatus(mission.id)}
+                      finalDeliverableAvailable={Boolean(
+                        mission.finalDeliverable,
+                      )}
+                      reviewingMissionId={reviewingMissionId}
+                      reviewError={reviewErrors[mission.id]}
+                      onGenerateFinalReview={handleGenerateFinalReview}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </main>
