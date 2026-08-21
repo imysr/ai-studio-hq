@@ -52,7 +52,7 @@ const rooms = {
   },
 };
 
-const REAL_AI_AGENTS = [2, 3, 4, 6];
+const REAL_AI_AGENTS = [2, 3, 4, 5, 6];
 
 export default function AgentRoom() {
   const params = useParams();
