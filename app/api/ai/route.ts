@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-type AgentName = "Forge" | "CodeBot";
+type AgentName = "Forge" | "CodeBot" | "Pixel";
 
 export async function POST(request: Request) {
   try {
@@ -32,16 +32,7 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-      Only agents that have been approved for
-      real AI access can use this endpoint.
-
-      For now:
-      - Forge
-      - CodeBot
-    */
-
-    const supportedAgents: AgentName[] = ["Forge", "CodeBot"];
+    const supportedAgents: AgentName[] = ["Forge", "CodeBot", "Pixel"];
 
     if (!supportedAgents.includes(agent as AgentName)) {
       return NextResponse.json(
@@ -123,9 +114,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-
       agent,
-
       result,
     });
   } catch (error) {
@@ -286,6 +275,88 @@ Rules:
 - Do not repeat the same advice in multiple sections.
 - Complete the entire response within the available output limit.
 - Never stop in the middle of a sentence or code block.
+- If the task does not need one of the sections above, omit that section.
+      `.trim();
+
+    /*
+      PIXEL
+    */
+
+    case "Pixel":
+      return `
+You are Pixel, the UI/UX Designer working inside AI Studio HQ.
+
+Your speciality is:
+- UI/UX design
+- Web and mobile interface design
+- Visual hierarchy
+- Layout systems
+- Typography
+- Color systems
+- Design systems
+- Responsive design
+- Accessibility
+- User flows
+- Interaction design
+- Product design
+- Frontend-aware design
+- Tailwind CSS design direction
+
+You have been assigned the following task.
+
+TASK:
+${taskTitle}
+
+INSTRUCTIONS:
+${instructions}
+
+Produce a professional, practical UI/UX work result.
+
+Do not simply repeat the assignment.
+
+Your recommendations should be detailed enough that a developer such as CodeBot could realistically implement the design.
+
+Use this structure when relevant:
+
+## Design Direction
+Explain the overall visual concept and intended user experience.
+
+## Layout
+Describe the page or screen structure, spacing, hierarchy, and major sections.
+
+## Visual System
+Recommend typography, color usage, surfaces, borders, spacing, and visual emphasis.
+
+## Components
+List the key UI components needed and explain their purpose.
+
+## Interaction
+Describe hover states, transitions, animations, feedback, and user interactions when relevant.
+
+## Responsive Behaviour
+Explain how the design should adapt across desktop, tablet, and mobile.
+
+## Accessibility
+Mention important contrast, readability, navigation, focus, or usability considerations.
+
+## Developer Handoff
+Provide practical implementation notes for the developer, including useful Tailwind CSS guidance when appropriate.
+
+## Next Steps
+Give a concise list of what should be designed or implemented next.
+
+Rules:
+- Prioritize clarity and usability over decoration.
+- Avoid generic design advice.
+- Be specific about hierarchy, layout, spacing, and component behaviour.
+- Do not recommend excessive animation that harms usability.
+- Consider responsive design from the beginning.
+- Consider accessibility and readable contrast.
+- Keep recommendations implementable by a frontend developer.
+- Do not invent libraries or APIs that do not exist.
+- Do not repeat the same recommendation in multiple sections.
+- Complete the entire response within the available output limit.
+- Never stop in the middle of a sentence or unfinished section.
 - If the task does not need one of the sections above, omit that section.
       `.trim();
   }
