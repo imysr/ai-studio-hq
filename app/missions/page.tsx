@@ -255,12 +255,10 @@ export default function Missions() {
 
   async function launchMission() {
     const cleanTitle = title.trim();
-
     const cleanDescription = description.trim();
 
     if (!cleanTitle) {
       alert("Enter mission title");
-
       return;
     }
 
@@ -269,39 +267,139 @@ export default function Missions() {
     }
 
     setIsPlanning(true);
-
     setPlanningError("");
-
     setPlanningMessage("🧠 Valid is analysing the mission...");
 
-    try {
-      const response = await fetch("/api/orchestrate", {
-        method: "POST",
+    const MAX_RETRIES = 3;
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+    /*
+    Extract Gemini's suggested retry delay.
 
-        body: JSON.stringify({
-          missionTitle: cleanTitle,
+    Example Gemini error:
+    "Please retry in 43.886353754s."
+  */
+    function getRetryDelay(errorMessage: string) {
+      const retryMatch = errorMessage.match(/retry\s+in\s+([\d.]+)\s*s/i);
 
-          missionDescription: cleanDescription,
-        }),
+      if (!retryMatch) {
+        return 10;
+      }
+
+      const seconds = Number.parseFloat(retryMatch[1]);
+
+      if (!Number.isFinite(seconds)) {
+        return 10;
+      }
+
+      /*
+      Add a small buffer so we do not retry
+      at the exact moment Gemini's limit resets.
+    */
+      return Math.max(2, Math.ceil(seconds) + 2);
+    }
+
+    function isQuotaError(errorMessage: string) {
+      const normalizedMessage = errorMessage.toLowerCase();
+
+      return (
+        normalizedMessage.includes("quota") ||
+        normalizedMessage.includes("rate limit") ||
+        normalizedMessage.includes("resource_exhausted") ||
+        normalizedMessage.includes("429") ||
+        normalizedMessage.includes("high demand")
+      );
+    }
+
+    function wait(milliseconds: number) {
+      return new Promise<void>((resolve) => {
+        window.setTimeout(resolve, milliseconds);
       });
+    }
 
-      const data = (await response.json()) as OrchestrationResponse;
+    try {
+      let data: OrchestrationResponse | null = null;
 
-      if (!response.ok) {
-        throw new Error(data.error ?? "Valid failed to plan the mission.");
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+        if (attempt > 0) {
+          setPlanningError("");
+          setPlanningMessage(
+            `🧠 Valid is retrying orchestration... Retry ${attempt}/${MAX_RETRIES}`,
+          );
+        }
+
+        const response = await fetch("/api/orchestrate", {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            missionTitle: cleanTitle,
+            missionDescription: cleanDescription,
+          }),
+        });
+
+        const responseData = (await response.json()) as OrchestrationResponse;
+
+        if (response.ok) {
+          data = responseData;
+          break;
+        }
+
+        const errorMessage =
+          responseData.error ?? "Valid failed to plan the mission.";
+
+        /*
+        Normal errors should NOT automatically retry.
+
+        Auto-retry is only for temporary Gemini
+        capacity / quota / rate-limit errors.
+      */
+        if (!isQuotaError(errorMessage)) {
+          throw new Error(errorMessage);
+        }
+
+        /*
+        We have already used every retry.
+      */
+        if (attempt === MAX_RETRIES) {
+          throw new Error(
+            "Gemini is still unavailable after 3 automatic retries. Please try the mission again later.",
+          );
+        }
+
+        const retryDelaySeconds = getRetryDelay(errorMessage);
+
+        /*
+        Countdown so the user can see exactly
+        what Valid is doing.
+      */
+        for (let remaining = retryDelaySeconds; remaining > 0; remaining -= 1) {
+          setPlanningMessage(
+            `⏳ Gemini is temporarily rate limited. Valid will retry automatically in ${remaining}s — Retry ${
+              attempt + 1
+            }/${MAX_RETRIES}`,
+          );
+
+          await wait(1000);
+        }
       }
 
       if (
+        !data ||
         !data.analysis ||
         !Array.isArray(data.tasks) ||
         data.tasks.length === 0
       ) {
         throw new Error("Valid returned an incomplete mission plan.");
       }
+
+      /*
+      ORCHESTRATION SUCCEEDED
+    */
+
+      setPlanningMessage("🧠 Valid finished analysing. Creating mission...");
 
       const missionId = Date.now();
 
@@ -329,11 +427,19 @@ export default function Missions() {
         finalDeliverableCreatedAt: "",
       };
 
+      /*
+      SAVE MISSION
+    */
+
       const updatedMissions = [...missions, newMission];
 
       setMissions(updatedMissions);
 
       saveMissions(updatedMissions);
+
+      /*
+      SAVE GENERATED TASKS
+    */
 
       const currentTasks = getTasks();
 
@@ -343,11 +449,18 @@ export default function Missions() {
 
       setTasks(updatedTasks);
 
+      /*
+      MISSION MEMORY
+    */
+
       saveMissionMemory({
         title: cleanTitle,
-
         description: cleanDescription,
       });
+
+      /*
+      VALID MANAGER ANALYSIS
+    */
 
       recordMissionAnalysis(newMission);
 
@@ -370,6 +483,10 @@ export default function Missions() {
       console.log("Valid Orchestration:", data);
 
       console.log("Mission Report:", report);
+
+      /*
+      UPDATE AI EMPLOYEE MEMORY
+    */
 
       const memories: AgentMemory[] = agents.map((agent) => {
         const agentTasks = newTasks.filter(
@@ -411,12 +528,17 @@ export default function Missions() {
 
       saveAgentMemory(memories);
 
+      /*
+      SUCCESS
+    */
+
+      setPlanningError("");
+
       setPlanningMessage(
         `✅ Valid created ${newTasks.length} task(s) and delegated the mission.`,
       );
 
       setTitle("");
-
       setDescription("");
 
       window.setTimeout(() => {
