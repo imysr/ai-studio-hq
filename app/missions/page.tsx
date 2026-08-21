@@ -11,8 +11,6 @@ import { getMissions, saveMissions } from "@/lib/missionStorage";
 
 import { saveTasks, getTasks } from "@/lib/taskStorage";
 
-import { startAgentTask, completeAgentTask } from "@/lib/workEngine";
-
 import {
   calculateMissionProgress,
   calculateMissionStatus,
@@ -21,7 +19,6 @@ import {
 import { generateMissionTasks, type DelegatedTask } from "@/lib/taskGenerator";
 
 import { saveMissionMemory } from "@/lib/missionMemory";
-
 import { saveAgentMemory } from "@/lib/agentMemory";
 
 import { recordMissionAnalysis, createManagerReport } from "@/lib/aiManager";
@@ -30,33 +27,23 @@ import { getManagerMemory, saveManagerMemory } from "@/lib/managerMemory";
 
 type AgentMemory = {
   id: number;
-
   currentTask: string;
-
   missionStatus: string;
-
   location: string;
-
   energy: number;
-
   lastAction: string;
 };
 
 type OrchestrationResponse = {
   success?: boolean;
-
   analysis?: string;
-
   tasks?: DelegatedTask[];
-
   error?: string;
 };
 
 type FinalReviewResponse = {
   success?: boolean;
-
   finalDeliverable?: string;
-
   error?: string;
 };
 
@@ -105,49 +92,8 @@ export default function Missions() {
 
   const [reviewErrors, setReviewErrors] = useState<Record<number, string>>({});
 
-  const [, refresh] = useState(0);
-
-  /*
-    MANUAL TASK START
-
-    The scheduler usually handles this,
-    but we keep the button available.
-  */
-
-  function handleStartTask(taskId: number) {
-    startAgentTask(taskId);
-
-    const updatedTasks = getTasks();
-
-    setTasks([...updatedTasks]);
-
-    refresh((value) => value + 1);
-  }
-
-  /*
-    MANUAL TASK COMPLETE
-
-    Real AI agents will use Gemini.
-  */
-
-  async function handleCompleteTask(taskId: number) {
-    await completeAgentTask(taskId);
-
-    const updatedTasks = getTasks();
-
-    setTasks([...updatedTasks]);
-
-    refresh((value) => value + 1);
-  }
-
   /*
     VALID FINAL MISSION REVIEW
-
-    All specialist work:
-        ↓
-    Valid reads results
-        ↓
-    Final CEO deliverable
   */
 
   async function handleGenerateFinalReview(mission: Mission) {
@@ -190,16 +136,10 @@ export default function Missions() {
 
     setReviewErrors((current) => ({
       ...current,
-
       [mission.id]: "",
     }));
 
     try {
-      /*
-        PREPARE SPECIALIST
-        RESULTS FOR VALID
-      */
-
       const reviewTasks = completedTasks.map((task) => {
         const assignedAgent = agents.find(
           (agent) => agent.id === task.assignedAgent,
@@ -217,10 +157,6 @@ export default function Missions() {
           result: task.result ?? "",
         };
       });
-
-      /*
-        CALL FINAL REVIEW API
-      */
 
       const response = await fetch("/api/final-review", {
         method: "POST",
@@ -261,9 +197,8 @@ export default function Missions() {
       }));
 
       /*
-  PERSIST FINAL DELIVERABLE
-  INSIDE THE MISSION
-*/
+        PERSIST FINAL DELIVERABLE
+      */
 
       const latestMissions = getMissions();
 
@@ -286,8 +221,7 @@ export default function Missions() {
       setMissions(updatedMissions);
 
       /*
-        SAVE INTO VALID
-        MANAGER MEMORY
+        SAVE INTO VALID MEMORY
       */
 
       const currentMemory = getManagerMemory();
@@ -334,22 +268,6 @@ export default function Missions() {
 
   /*
     VALID CEO ORCHESTRATION
-
-    USER
-      ↓
-    Mission Control
-      ↓
-    /api/orchestrate
-      ↓
-    Valid analyses mission
-      ↓
-    Valid chooses agents
-      ↓
-    Valid creates tasks
-      ↓
-    Valid creates dependencies
-      ↓
-    Agents collaborate
   */
 
   async function launchMission() {
@@ -374,11 +292,6 @@ export default function Missions() {
     setPlanningMessage("🧠 Valid is analysing the mission...");
 
     try {
-      /*
-        ASK VALID TO CREATE
-        THE COMPANY PLAN
-      */
-
       const response = await fetch("/api/orchestrate", {
         method: "POST",
 
@@ -407,35 +320,13 @@ export default function Missions() {
         throw new Error("Valid returned an incomplete mission plan.");
       }
 
-      /*
-        CREATE MISSION ID
-      */
-
       const missionId = Date.now();
 
-      /*
-        TURN VALID'S PLAN
-        INTO REAL TASKS
-
-        taskGenerator also converts
-        Valid's dependency indexes
-        into real task IDs.
-      */
-
       const newTasks = generateMissionTasks(missionId, data.tasks);
-
-      /*
-        FIND WHICH AGENTS
-        VALID CHOSE
-      */
 
       const assignedAgentIds = [
         ...new Set(newTasks.map((task) => task.assignedAgent)),
       ];
-
-      /*
-        CREATE MISSION
-      */
 
       const newMission: Mission = {
         id: missionId,
@@ -449,21 +340,17 @@ export default function Missions() {
         progress: 0,
 
         assignedAgents: assignedAgentIds,
-      };
 
-      /*
-        SAVE MISSION
-      */
+        finalDeliverable: "",
+
+        finalDeliverableCreatedAt: "",
+      };
 
       const updatedMissions = [...missions, newMission];
 
       setMissions(updatedMissions);
 
       saveMissions(updatedMissions);
-
-      /*
-        SAVE GENERATED TASKS
-      */
 
       const currentTasks = getTasks();
 
@@ -473,32 +360,15 @@ export default function Missions() {
 
       setTasks(updatedTasks);
 
-      /*
-        MISSION MEMORY
-      */
-
       saveMissionMemory({
         title: cleanTitle,
 
         description: cleanDescription,
       });
 
-      /*
-        VALID ACTIVITY
-      */
-
       recordMissionAnalysis(newMission);
 
-      /*
-        MANAGER REPORT
-      */
-
       const report = createManagerReport(newMission, newTasks);
-
-      /*
-        SAVE VALID'S
-        INITIAL ANALYSIS
-      */
 
       saveManagerMemory({
         missionTitle: newMission.title,
@@ -517,17 +387,6 @@ export default function Missions() {
       console.log("Valid Orchestration:", data);
 
       console.log("Mission Report:", report);
-
-      /*
-        UPDATE AGENT MEMORY
-
-        Agents chosen by Valid
-        receive their first task.
-
-        Some tasks may remain blocked
-        by dependencies until earlier
-        agents complete their work.
-      */
 
       const memories: AgentMemory[] = agents.map((agent) => {
         const agentTasks = newTasks.filter(
@@ -568,10 +427,6 @@ export default function Missions() {
       });
 
       saveAgentMemory(memories);
-
-      /*
-        SUCCESS
-      */
 
       setPlanningMessage(
         `✅ Valid created ${newTasks.length} task(s) and delegated the mission.`,
@@ -867,21 +722,11 @@ export default function Missions() {
               >
                 {planningError}
               </p>
-
-              <p
-                className="
-                text-gray-500
-                text-sm
-                mt-3
-                "
-              >
-                Your mission was not created. You can safely try again later.
-              </p>
             </div>
           )}
         </section>
 
-        {/* ACTIVE MISSIONS */}
+        {/* MISSIONS */}
 
         <section className="mt-10">
           <h2
@@ -890,8 +735,18 @@ export default function Missions() {
             font-bold
             "
           >
-            Active Missions
+            Mission History
           </h2>
+
+          <p
+            className="
+            text-gray-500
+            mt-2
+            "
+          >
+            Open a mission to view its complete workflow, agent results and
+            final deliverable.
+          </p>
 
           {missions.map((mission) => {
             const missionProgress = calculateMissionProgress(mission.id);
@@ -901,6 +756,10 @@ export default function Missions() {
             const missionTasks = tasks.filter(
               (task) => task.missionId === mission.id,
             );
+
+            const completedTaskCount = missionTasks.filter(
+              (task) => task.status === "Completed",
+            ).length;
 
             return (
               <div
@@ -919,11 +778,15 @@ export default function Missions() {
                     flex
                     items-start
                     justify-between
-                    gap-5
+                    gap-6
                     flex-wrap
                     "
                 >
-                  <div>
+                  <div
+                    className="
+                      max-w-3xl
+                      "
+                  >
                     <h3
                       className="
                         text-3xl
@@ -937,17 +800,50 @@ export default function Missions() {
                       className="
                         text-gray-400
                         mt-2
+                        leading-6
                         "
                     >
                       {mission.description}
                     </p>
+
+                    <Link
+                      href={`/missions/${mission.id}`}
+                      className="
+                        inline-flex
+                        items-center
+                        gap-2
+                        mt-5
+                        text-sm
+                        border
+                        border-white/10
+                        bg-black
+                        hover:border-white/30
+                        rounded-xl
+                        px-4
+                        py-2
+                        transition
+                        "
+                    >
+                      Open Mission →
+                    </Link>
                   </div>
 
                   <span
-                    className="
-                      text-green-400
+                    className={`
+                      px-4
+                      py-2
+                      rounded-full
+                      border
                       text-sm
-                      "
+
+                      ${
+                        missionStatus === "Completed"
+                          ? "border-green-500/30 bg-green-500/10 text-green-400"
+                          : missionStatus === "Active"
+                            ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
+                            : "border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
+                      }
+                      `}
                   >
                     {missionStatus}
                   </span>
@@ -1002,425 +898,228 @@ export default function Missions() {
 
                 {/* PROGRESS */}
 
-                <p className="mt-6">Progress</p>
-
-                <div
-                  className="
-                    w-full
-                    h-4
-                    bg-black
-                    border
-                    border-white/10
-                    rounded-full
-                    mt-2
-                    overflow-hidden
-                    "
-                >
+                <div className="mt-6">
                   <div
                     className="
-                      h-4
-                      bg-white
-                      rounded-full
-                      transition-all
+                      flex
+                      justify-between
+                      text-sm
                       "
-                    style={{
-                      width: `${missionProgress}%`,
-                    }}
-                  />
-                </div>
+                  >
+                    <span className="text-gray-500">Progress</span>
 
-                <p className="mt-2">{missionProgress}%</p>
+                    <span>{missionProgress}%</span>
+                  </div>
 
-                {/* TASKS */}
-
-                <h4
-                  className="
-                    text-xl
-                    font-bold
-                    mt-8
-                    "
-                >
-                  Delegated Tasks
-                </h4>
-
-                <div
-                  className="
-                    mt-4
-                    space-y-4
-                    "
-                >
-                  {missionTasks.length === 0 ? (
-                    <p
-                      className="
-                        text-gray-500
-                        "
-                    >
-                      No tasks generated.
-                    </p>
-                  ) : (
-                    missionTasks.map((task) => {
-                      const assignedAgent = agents.find(
-                        (agent) => agent.id === task.assignedAgent,
-                      );
-
-                      const dependencyCount = task.dependsOn?.length ?? 0;
-
-                      const contextCount = task.contextFromTasks?.length ?? 0;
-
-                      return (
-                        <div
-                          key={task.id}
-                          className="
-                              bg-black
-                              border
-                              border-white/10
-                              rounded-xl
-                              p-5
-                              "
-                        >
-                          <div
-                            className="
-                                flex
-                                justify-between
-                                gap-5
-                                flex-wrap
-                                "
-                          >
-                            <div>
-                              <p
-                                className="
-                                    font-bold
-                                    text-lg
-                                    "
-                              >
-                                {task.status === "Completed"
-                                  ? "✅"
-                                  : task.status === "Working"
-                                    ? "⚙️"
-                                    : "⏳"}{" "}
-                                {task.title}
-                              </p>
-
-                              <p
-                                className="
-                                    text-blue-400
-                                    text-sm
-                                    mt-2
-                                    "
-                              >
-                                Assigned by Valid → {assignedAgent?.emoji}{" "}
-                                {assignedAgent?.name ?? "Unknown Agent"}
-                              </p>
-                            </div>
-
-                            <span
-                              className="
-                                  text-sm
-                                  text-gray-400
-                                  "
-                            >
-                              {task.progress}%
-                            </span>
-                          </div>
-
-                          <p
-                            className="
-                                text-gray-400
-                                mt-4
-                                leading-6
-                                "
-                          >
-                            {task.description}
-                          </p>
-
-                          {(dependencyCount > 0 || contextCount > 0) && (
-                            <div
-                              className="
-                                  mt-4
-                                  flex
-                                  flex-wrap
-                                  gap-2
-                                  "
-                            >
-                              {dependencyCount > 0 && (
-                                <span
-                                  className="
-                                      text-xs
-                                      border
-                                      border-yellow-500/20
-                                      bg-yellow-500/10
-                                      text-yellow-300
-                                      rounded-full
-                                      px-3
-                                      py-1
-                                      "
-                                >
-                                  ⛓ {dependencyCount} dependency
-                                  {dependencyCount !== 1 ? "ies" : ""}
-                                </span>
-                              )}
-
-                              {contextCount > 0 && (
-                                <span
-                                  className="
-                                      text-xs
-                                      border
-                                      border-blue-500/20
-                                      bg-blue-500/10
-                                      text-blue-300
-                                      rounded-full
-                                      px-3
-                                      py-1
-                                      "
-                                >
-                                  🤝 Uses {contextCount} collaborator result
-                                  {contextCount !== 1 ? "s" : ""}
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          <div
-                            className="
-                                mt-5
-                                h-2
-                                bg-white/10
-                                rounded-full
-                                overflow-hidden
-                                "
-                          >
-                            <div
-                              className="
-                                  h-full
-                                  bg-white
-                                  rounded-full
-                                  "
-                              style={{
-                                width: `${task.progress}%`,
-                              }}
-                            />
-                          </div>
-
-                          <p
-                            className="
-                                mt-3
-                                text-sm
-                                text-gray-500
-                                "
-                          >
-                            Status: {task.status}
-                          </p>
-
-                          <div
-                            className="
-                                flex
-                                gap-3
-                                mt-4
-                                "
-                          >
-                            {task.status === "Pending" && (
-                              <button
-                                type="button"
-                                onClick={() => handleStartTask(task.id)}
-                                className="
-                                    bg-blue-600
-                                    px-4
-                                    py-2
-                                    rounded-lg
-                                    "
-                              >
-                                ▶ Start Task
-                              </button>
-                            )}
-
-                            {task.status !== "Completed" && (
-                              <button
-                                type="button"
-                                onClick={() => handleCompleteTask(task.id)}
-                                className="
-                                    bg-green-600
-                                    px-4
-                                    py-2
-                                    rounded-lg
-                                    "
-                              >
-                                ✅ Complete
-                              </button>
-                            )}
-                          </div>
-
-                          {task.status === "Completed" && task.result && (
-                            <div
-                              className="
-                                    mt-6
-                                    bg-[#080808]
-                                    border
-                                    border-white/10
-                                    rounded-xl
-                                    p-5
-                                    "
-                            >
-                              <p className="font-bold">📄 Work Result</p>
-
-                              <pre
-                                className="
-                                      whitespace-pre-wrap
-                                      font-sans
-                                      text-sm
-                                      text-gray-300
-                                      leading-6
-                                      mt-4
-                                      "
-                              >
-                                {task.result}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* FINAL CEO REVIEW */}
-
-                {missionProgress === 100 && (
                   <div
                     className="
-                      mt-8
-                      border-t
+                      w-full
+                      h-3
+                      bg-black
+                      border
                       border-white/10
-                      pt-8
+                      rounded-full
+                      mt-2
+                      overflow-hidden
                       "
                   >
                     <div
                       className="
-                        flex
-                        items-center
-                        justify-between
-                        gap-5
-                        flex-wrap
+                        h-full
+                        bg-white
+                        rounded-full
+                        transition-all
+                        "
+                      style={{
+                        width: `${missionProgress}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* SUMMARY */}
+
+                <div
+                  className="
+                    grid
+                    md:grid-cols-3
+                    gap-4
+                    mt-6
+                    "
+                >
+                  <div
+                    className="
+                      bg-black
+                      border
+                      border-white/10
+                      rounded-xl
+                      p-4
+                      "
+                  >
+                    <p
+                      className="
+                        text-gray-500
+                        text-sm
                         "
                     >
-                      <div>
-                        <h4
-                          className="
-                            text-2xl
-                            font-bold
-                            "
-                        >
-                          🧠 Valid Final Review
-                        </h4>
+                      Tasks
+                    </p>
 
-                        <p
-                          className="
-                            text-gray-500
-                            mt-2
-                            "
-                        >
-                          Valid can now review all completed specialist work and
-                          prepare one final mission deliverable.
-                        </p>
-                      </div>
+                    <p
+                      className="
+                        text-xl
+                        font-bold
+                        mt-1
+                        "
+                    >
+                      {missionTasks.length}
+                    </p>
+                  </div>
 
-                      {!finalDeliverables[mission.id] && (
-                        <button
-                          type="button"
-                          disabled={reviewingMissionId !== null}
-                          onClick={() => handleGenerateFinalReview(mission)}
-                          className="
-                            bg-purple-600
-                            hover:bg-purple-500
-                            disabled:bg-purple-950
-                            disabled:text-gray-500
-                            disabled:cursor-not-allowed
-                            px-5
-                            py-3
-                            rounded-xl
-                            font-semibold
-                            transition
-                            "
-                        >
-                          {reviewingMissionId === mission.id
-                            ? "🧠 Valid is reviewing team work..."
-                            : "🧠 Generate Final Review"}
-                        </button>
-                      )}
-                    </div>
+                  <div
+                    className="
+                      bg-black
+                      border
+                      border-white/10
+                      rounded-xl
+                      p-4
+                      "
+                  >
+                    <p
+                      className="
+                        text-gray-500
+                        text-sm
+                        "
+                    >
+                      Completed
+                    </p>
+
+                    <p
+                      className="
+                        text-xl
+                        font-bold
+                        mt-1
+                        "
+                    >
+                      {completedTaskCount}
+                    </p>
+                  </div>
+
+                  <div
+                    className="
+                      bg-black
+                      border
+                      border-white/10
+                      rounded-xl
+                      p-4
+                      "
+                  >
+                    <p
+                      className="
+                        text-gray-500
+                        text-sm
+                        "
+                    >
+                      Final Review
+                    </p>
+
+                    <p
+                      className={`
+                        text-sm
+                        font-semibold
+                        mt-2
+
+                        ${
+                          mission.finalDeliverable
+                            ? "text-green-400"
+                            : "text-gray-500"
+                        }
+                        `}
+                    >
+                      {mission.finalDeliverable
+                        ? "✓ Available"
+                        : "Not generated"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* FINAL REVIEW */}
+
+                {missionProgress === 100 && !mission.finalDeliverable && (
+                  <div
+                    className="
+                        mt-6
+                        border-t
+                        border-white/10
+                        pt-6
+                        "
+                  >
+                    <button
+                      type="button"
+                      disabled={reviewingMissionId !== null}
+                      onClick={() => handleGenerateFinalReview(mission)}
+                      className="
+                          bg-purple-600
+                          hover:bg-purple-500
+                          disabled:bg-purple-950
+                          disabled:text-gray-500
+                          disabled:cursor-not-allowed
+                          px-5
+                          py-3
+                          rounded-xl
+                          font-semibold
+                          transition
+                          "
+                    >
+                      {reviewingMissionId === mission.id
+                        ? "🧠 Valid is reviewing team work..."
+                        : "🧠 Generate Final Review"}
+                    </button>
 
                     {reviewErrors[mission.id] && (
-                      <div
+                      <p
                         className="
-                          mt-5
-                          bg-red-950/30
-                          border
-                          border-red-500/30
-                          rounded-xl
-                          p-4
-                          text-red-300
-                          text-sm
-                          "
+                            text-red-400
+                            mt-3
+                            text-sm
+                            "
                       >
                         {reviewErrors[mission.id]}
-                      </div>
+                      </p>
                     )}
+                  </div>
+                )}
 
-                    {finalDeliverables[mission.id] && (
-                      <div
-                        className="
-                          mt-6
-                          bg-[#080808]
-                          border
-                          border-purple-500/30
-                          rounded-2xl
-                          p-6
-                          "
-                      >
-                        <div
-                          className="
-                            flex
-                            items-center
-                            gap-3
-                            "
-                        >
-                          <span className="text-3xl">📦</span>
+                {finalDeliverables[mission.id] && (
+                  <div
+                    className="
+                      mt-6
+                      border-t
+                      border-white/10
+                      pt-5
+                      "
+                  >
+                    <p
+                      className="
+                        text-purple-300
+                        text-sm
+                        "
+                    >
+                      📦 Valid has prepared the final mission deliverable.
+                    </p>
 
-                          <div>
-                            <p
-                              className="
-                                font-bold
-                                text-xl
-                                "
-                            >
-                              Final Mission Deliverable
-                            </p>
-
-                            <p
-                              className="
-                                text-sm
-                                text-gray-500
-                                mt-1
-                                "
-                            >
-                              Reviewed and prepared by Valid
-                            </p>
-                          </div>
-                        </div>
-
-                        <pre
-                          className="
-                            whitespace-pre-wrap
-                            font-sans
-                            text-sm
-                            text-gray-300
-                            leading-7
-                            mt-6
-                            "
-                        >
-                          {finalDeliverables[mission.id]}
-                        </pre>
-                      </div>
-                    )}
+                    <Link
+                      href={`/missions/${mission.id}`}
+                      className="
+                        inline-block
+                        mt-3
+                        text-sm
+                        text-white
+                        hover:text-purple-300
+                        "
+                    >
+                      View Final Deliverable →
+                    </Link>
                   </div>
                 )}
               </div>
