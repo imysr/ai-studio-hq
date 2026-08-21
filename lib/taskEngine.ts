@@ -17,3 +17,19 @@ export function calculateMissionProgress(missionId: number) {
 
   return progress;
 }
+
+export function calculateMissionStatus(
+  missionId: number,
+): "Planning" | "Active" | "Completed" {
+  const progress = calculateMissionProgress(missionId);
+
+  if (progress === 0) {
+    return "Planning";
+  }
+
+  if (progress === 100) {
+    return "Completed";
+  }
+
+  return "Active";
+}

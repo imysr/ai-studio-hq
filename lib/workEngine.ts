@@ -7,10 +7,12 @@ import type { MissionTask } from "@/data/tasks";
 /*
   REAL AI AGENTS
 
-  CodeBot = 2
-  Forge   = 6
-
-  Other agents still use local template results.
+  1 = Valid
+  2 = CodeBot
+  3 = Pixel
+  4 = Sage
+  5 = Atlas
+  6 = Forge
 */
 
 const REAL_AI_AGENTS = [1, 2, 3, 4, 5, 6];
@@ -24,6 +26,44 @@ const workLocations: Record<number, string> = {
   6: "Game Studio",
 };
 
+/*
+  AUTOMATIC AI RETRY
+
+  Initial request
+      ↓
+  Failure
+      ↓
+  Wait 3 seconds
+      ↓
+  Retry 1
+      ↓
+  Wait 8 seconds
+      ↓
+  Retry 2
+      ↓
+  Wait 15 seconds
+      ↓
+  Retry 3
+      ↓
+  Still failed?
+      ↓
+  Pause at 75%
+      ↓
+  Manual Retry AI button
+*/
+
+const AUTO_RETRY_DELAYS = [3000, 8000, 15000];
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+/*
+  START AGENT TASK
+*/
+
 export function startAgentTask(taskId: number) {
   const tasks = getTasks();
 
@@ -32,7 +72,7 @@ export function startAgentTask(taskId: number) {
       return task;
     }
 
-    const agent = agents.find((a) => a.id === task.assignedAgent);
+    const agent = agents.find((item) => item.id === task.assignedAgent);
 
     saveActivity({
       id: Date.now(),
@@ -61,10 +101,10 @@ export function startAgentTask(taskId: number) {
 /*
   COMPLETE TASK
 
-  CodeBot and Forge use Gemini.
+  All six agents currently use Gemini.
 
-  Valid, Pixel, Sage and Atlas
-  still use template results.
+  The local template generator remains
+  only as a fallback architecture.
 */
 
 export async function completeAgentTask(taskId: number) {
@@ -87,7 +127,7 @@ export async function completeAgentTask(taskId: number) {
   }
 
   /*
-    TEMPLATE AGENT
+    FALLBACK TEMPLATE AGENT
   */
 
   const result = generateTaskResult(task);
@@ -98,11 +138,8 @@ export async function completeAgentTask(taskId: number) {
 /*
   MANUAL AI RETRY
 
-  This is intentionally NOT called
-  by the scheduler.
-
-  It is only used when the user presses
-  the Retry AI button manually.
+  This remains available as the final
+  fallback after all automatic retries fail.
 */
 
 export async function retryAgentTask(taskId: number) {
@@ -117,11 +154,6 @@ export async function retryAgentTask(taskId: number) {
     };
   }
 
-  /*
-    Only CodeBot and Forge currently
-    have real Gemini access.
-  */
-
   if (!REAL_AI_AGENTS.includes(task.assignedAgent)) {
     return {
       success: false,
@@ -130,11 +162,11 @@ export async function retryAgentTask(taskId: number) {
   }
 
   /*
-    Retry is ONLY allowed for a task
-    that failed while generating at 75%.
+    Retry is ONLY allowed when
+    the task has stopped at 75%.
 
     This protects us from accidental
-    extra Gemini requests.
+    duplicate API requests.
   */
 
   if (task.status !== "Working" || task.progress !== 75) {
@@ -144,7 +176,7 @@ export async function retryAgentTask(taskId: number) {
     };
   }
 
-  const agent = agents.find((a) => a.id === task.assignedAgent);
+  const agent = agents.find((item) => item.id === task.assignedAgent);
 
   if (!agent) {
     return {
@@ -154,13 +186,10 @@ export async function retryAgentTask(taskId: number) {
   }
 
   /*
-    Temporarily move back to 50%.
+    Move temporarily back to 50%.
 
-    completeRealAITask() only accepts
-    Working tasks at 50%.
-
-    It will immediately move the task
-    back to 75% while Gemini generates.
+    completeRealAITask() only starts
+    requests for Working / 50% tasks.
   */
 
   const resetTasks: MissionTask[] = tasks.map((item): MissionTask => {
@@ -202,7 +231,7 @@ export async function retryAgentTask(taskId: number) {
   await completeRealAITask(retryTask);
 
   /*
-    Check whether the retry succeeded.
+    Check whether manual retry succeeded.
   */
 
   const refreshedTasks = getTasks();
@@ -212,50 +241,137 @@ export async function retryAgentTask(taskId: number) {
   if (refreshedTask?.status === "Completed" && refreshedTask.progress === 100) {
     return {
       success: true,
+
       message: `${agent.name} completed the task successfully.`,
     };
   }
 
   return {
     success: false,
+
     message: `${agent.name} could not complete the AI request. You can retry later.`,
   };
 }
 
 /*
+  REQUEST AI RESULT
+
+  Handles automatic retries.
+
+  IMPORTANT:
+  This does NOT reset task progress.
+
+  The task remains at 75% while
+  Gemini is generating or retrying.
+*/
+
+async function requestAIResult(
+  agentName: string,
+  task: MissionTask,
+): Promise<string> {
+  let lastError: Error | null = null;
+
+  const totalAttempts = AUTO_RETRY_DELAYS.length + 1;
+
+  for (let attempt = 0; attempt < totalAttempts; attempt++) {
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+          agent: agentName,
+
+          taskTitle: task.title,
+
+          instructions: task.description,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? `${agentName} AI request failed.`);
+      }
+
+      const result = typeof data.result === "string" ? data.result.trim() : "";
+
+      if (!result) {
+        throw new Error(`${agentName} returned an empty AI result.`);
+      }
+
+      return result;
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error("Unknown AI request error.");
+
+      /*
+        If this was our final
+        allowed attempt, stop.
+      */
+
+      if (attempt >= AUTO_RETRY_DELAYS.length) {
+        break;
+      }
+
+      const retryNumber = attempt + 1;
+
+      const delay = AUTO_RETRY_DELAYS[attempt];
+
+      console.warn(
+        `${agentName} AI attempt failed. Automatic retry ${retryNumber}/${AUTO_RETRY_DELAYS.length} in ${delay}ms.`,
+        lastError,
+      );
+
+      saveActivity({
+        id: Date.now(),
+
+        time: new Date().toLocaleTimeString(),
+
+        icon: "🔄",
+
+        message: `${agentName} automatic AI retry ${retryNumber}/${AUTO_RETRY_DELAYS.length} for ${task.title}`,
+      });
+
+      updateAgentRetryMemory(task);
+
+      await wait(delay);
+    }
+  }
+
+  throw lastError ?? new Error(`${agentName} AI request failed.`);
+}
+
+/*
   REAL GEMINI TASK
 
-  Used by:
-  - CodeBot
-  - Forge
+  Used by all six AI agents.
 */
 
 async function completeRealAITask(task: MissionTask) {
   /*
-    Only Working 50% tasks are allowed
-    to start an API request.
+    Only Working / 50% tasks may
+    start a new AI generation cycle.
 
-    Once Gemini generation begins,
+    Once generation begins,
     progress becomes 75%.
 
-    This protects us from repeated
-    requests caused by the scheduler.
+    This protects the API from
+    duplicate scheduler requests.
   */
 
   if (task.status !== "Working" || task.progress !== 50) {
     return;
   }
 
-  const agent = agents.find((a) => a.id === task.assignedAgent);
+  const agent = agents.find((item) => item.id === task.assignedAgent);
 
   if (!agent) {
     return;
   }
-
-  /*
-    Only explicitly enabled AI agents
-    may reach Gemini.
-  */
 
   if (!REAL_AI_AGENTS.includes(task.assignedAgent)) {
     return;
@@ -297,45 +413,13 @@ async function completeRealAITask(task: MissionTask) {
 
   try {
     /*
-      CALL OUR NEXT.JS API
-
-      Browser:
-      /api/ai
-
-      Server:
-      Gemini
-
-      The API key stays securely inside
-      .env.local.
+      This function performs:
+      - Initial Gemini request
+      - Automatic retries
+      - Increasing retry delays
     */
 
-    const response = await fetch("/api/ai", {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-      },
-
-      body: JSON.stringify({
-        agent: agent.name,
-
-        taskTitle: task.title,
-
-        instructions: task.description,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.error ?? `${agent.name} AI request failed.`);
-    }
-
-    const result = typeof data.result === "string" ? data.result.trim() : "";
-
-    if (!result) {
-      throw new Error(`${agent.name} returned an empty AI result.`);
-    }
+    const result = await requestAIResult(agent.name, task);
 
     /*
       SAVE REAL GEMINI RESULT
@@ -346,16 +430,15 @@ async function completeRealAITask(task: MissionTask) {
     console.error(`${agent.name} AI error:`, error);
 
     /*
-      IMPORTANT
+      All automatic retries failed.
 
-      No automatic retry.
+      The task intentionally remains:
 
-      Task stays:
       Working
       75%
 
-      The user must manually press
-      Retry AI.
+      This allows the user to use
+      the manual Retry AI button.
     */
 
     saveActivity({
@@ -365,7 +448,7 @@ async function completeRealAITask(task: MissionTask) {
 
       icon: "⚠️",
 
-      message: `${agent.name} AI generation failed for ${task.title}`,
+      message: `${agent.name} AI generation failed after automatic retries for ${task.title}`,
     });
 
     updateAgentErrorMemory(task);
@@ -397,7 +480,7 @@ function finalizeTask(task: MissionTask, result: string) {
 
   saveTasks(updatedTasks);
 
-  const agent = agents.find((a) => a.id === task.assignedAgent);
+  const agent = agents.find((item) => item.id === task.assignedAgent);
 
   saveActivity({
     id: Date.now(),
@@ -413,17 +496,12 @@ function finalizeTask(task: MissionTask, result: string) {
 }
 
 /*
-  TEMPORARY LOCAL RESULT GENERATOR
+  LOCAL FALLBACK RESULT GENERATOR
 
-  Still template-based:
-  - Valid
-  - Pixel
-  - Sage
-  - Atlas
+  Normally this should not run because
+  all six agents currently have Gemini.
 
-  Real Gemini:
-  - CodeBot
-  - Forge
+  We keep it as a defensive fallback.
 */
 
 function generateTaskResult(task: MissionTask): string {
@@ -457,7 +535,7 @@ Strategic analysis completed.
       `.trim();
 
     /*
-      CODEBOT FALLBACK
+      CODEBOT
     */
 
     case 2:
@@ -550,7 +628,7 @@ Initial strategy analysis completed.
       `.trim();
 
     /*
-      FORGE FALLBACK
+      FORGE
     */
 
     case 6:
@@ -652,6 +730,10 @@ function updateAgentGeneratingMemory(task: MissionTask) {
 
 /*
   AI RETRY MEMORY
+
+  Used for:
+  - automatic retries
+  - manual retries
 */
 
 function updateAgentRetryMemory(task: MissionTask) {
@@ -683,7 +765,11 @@ function updateAgentRetryMemory(task: MissionTask) {
 /*
   REAL AI ERROR MEMORY
 
-  No automatic retry is performed.
+  This state is reached only after
+  all automatic retries have failed.
+
+  The manual Retry AI button
+  remains available.
 */
 
 function updateAgentErrorMemory(task: MissionTask) {

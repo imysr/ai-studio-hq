@@ -4,39 +4,53 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { agents } from "@/data/agents";
-import { defaultMissions, Mission } from "@/data/missions";
-import { MissionTask } from "@/data/tasks";
+import { defaultMissions, type Mission } from "@/data/missions";
+import type { MissionTask } from "@/data/tasks";
 
-import { saveMissions } from "@/lib/missionStorage";
+import { getMissions, saveMissions } from "@/lib/missionStorage";
 import { saveTasks, getTasks } from "@/lib/taskStorage";
 
 import { startAgentTask, completeAgentTask } from "@/lib/workEngine";
 
-import { calculateMissionProgress } from "@/lib/taskEngine";
+import {
+  calculateMissionProgress,
+  calculateMissionStatus,
+} from "@/lib/taskEngine";
 
-import { generateMissionTasks } from "@/lib/taskGenerator";
+import { generateMissionTasks, type DelegatedTask } from "@/lib/taskGenerator";
 
 import { saveMissionMemory } from "@/lib/missionMemory";
 import { saveAgentMemory } from "@/lib/agentMemory";
-import { analyseMission, createManagerReport } from "@/lib/aiManager";
+
+import { recordMissionAnalysis, createManagerReport } from "@/lib/aiManager";
+
 import { saveManagerMemory } from "@/lib/managerMemory";
 
 type AgentMemory = {
   id: number;
-
   currentTask: string;
-
   missionStatus: string;
-
   location: string;
-
   energy: number;
-
   lastAction: string;
 };
 
+type OrchestrationResponse = {
+  success?: boolean;
+
+  analysis?: string;
+
+  tasks?: DelegatedTask[];
+
+  error?: string;
+};
+
 export default function Missions() {
-  const [missions, setMissions] = useState<Mission[]>(defaultMissions);
+  const [missions, setMissions] = useState<Mission[]>(() => {
+    const savedMissions = getMissions();
+
+    return savedMissions.length > 0 ? savedMissions : defaultMissions;
+  });
 
   const [tasks, setTasks] = useState<MissionTask[]>(getTasks());
 
@@ -44,19 +58,13 @@ export default function Missions() {
 
   const [description, setDescription] = useState("");
 
-  const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
+  const [isPlanning, setIsPlanning] = useState(false);
+
+  const [planningMessage, setPlanningMessage] = useState("");
+
+  const [planningError, setPlanningError] = useState("");
 
   const [, refresh] = useState(0);
-
-  function toggleAgent(id: number) {
-    setSelectedAgents((current) => {
-      if (current.includes(id)) {
-        return current.filter((agentId) => agentId !== id);
-      }
-
-      return [...current, id];
-    });
-  }
 
   function handleStartTask(taskId: number) {
     startAgentTask(taskId);
@@ -67,8 +75,9 @@ export default function Missions() {
 
     refresh((value) => value + 1);
   }
-  function handleCompleteTask(taskId: number) {
-    completeAgentTask(taskId);
+
+  async function handleCompleteTask(taskId: number) {
+    await completeAgentTask(taskId);
 
     const updatedTasks = getTasks();
 
@@ -77,484 +86,902 @@ export default function Missions() {
     refresh((value) => value + 1);
   }
 
-  function launchMission() {
-    if (title.trim() === "") {
+  /*
+    VALID CEO ORCHESTRATION
+
+    USER
+      ↓
+    Mission Control
+      ↓
+    /api/orchestrate
+      ↓
+    Valid analyses mission
+      ↓
+    Valid chooses agents
+      ↓
+    Valid creates tasks
+      ↓
+    Tasks appear in agent rooms
+  */
+
+  async function launchMission() {
+    const cleanTitle = title.trim();
+
+    const cleanDescription = description.trim();
+
+    if (!cleanTitle) {
       alert("Enter mission title");
 
       return;
     }
 
-    const missionId = Date.now();
+    if (isPlanning) {
+      return;
+    }
 
-    const newMission: Mission = {
-      id: missionId,
+    setIsPlanning(true);
 
-      title: title,
+    setPlanningError("");
 
-      description: description,
+    setPlanningMessage("🧠 Valid is analysing the mission...");
 
-      status: "Active",
+    try {
+      /*
+        ASK VALID TO CREATE
+        THE COMPANY PLAN
+      */
 
-      progress: 0,
+      const response = await fetch("/api/orchestrate", {
+        method: "POST",
 
-      assignedAgents: selectedAgents,
-    };
+        headers: {
+          "Content-Type": "application/json",
+        },
 
-    const updatedMissions = [...missions, newMission];
+        body: JSON.stringify({
+          missionTitle: cleanTitle,
 
-    setMissions(updatedMissions);
+          missionDescription: cleanDescription,
+        }),
+      });
 
-    saveMissions(updatedMissions);
+      const data = (await response.json()) as OrchestrationResponse;
 
-    const newTasks = generateMissionTasks(
-      missionId,
+      if (!response.ok) {
+        throw new Error(data.error ?? "Valid failed to plan the mission.");
+      }
 
-      selectedAgents,
-    );
+      if (
+        !data.analysis ||
+        !Array.isArray(data.tasks) ||
+        data.tasks.length === 0
+      ) {
+        throw new Error("Valid returned an incomplete mission plan.");
+      }
 
-    const updatedTasks = [...tasks, ...newTasks];
+      /*
+        CREATE MISSION ID
+      */
 
-    setTasks(updatedTasks);
+      const missionId = Date.now();
 
-    saveTasks(updatedTasks);
+      /*
+        TURN VALID'S PLAN
+        INTO REAL MISSION TASKS
+      */
 
-    saveMissionMemory({
-      title: title,
+      const newTasks = generateMissionTasks(missionId, data.tasks);
 
-      description: description,
-    });
+      /*
+        FIND WHICH AGENTS
+        VALID ACTUALLY CHOSE
+      */
 
-    const analysis = analyseMission(newMission);
+      const assignedAgentIds = [
+        ...new Set(newTasks.map((task) => task.assignedAgent)),
+      ];
 
-    const report = createManagerReport(newMission, newTasks);
+      /*
+        CREATE THE MISSION
+      */
 
-    saveManagerMemory({
-      missionTitle: newMission.title,
+      const newMission: Mission = {
+        id: missionId,
 
-      analysis: analysis.analysis,
+        title: cleanTitle,
 
-      decision: analysis.decision,
+        description: cleanDescription,
 
-      createdAt: new Date().toISOString(),
-    });
+        status: "Active",
 
-    console.log("AI Manager Report:", analysis);
+        progress: 0,
 
-    console.log("Mission Report:", report);
-    const memories: AgentMemory[] = agents.map((agent) => {
-      if (selectedAgents.includes(agent.id)) {
+        assignedAgents: assignedAgentIds,
+      };
+
+      /*
+        SAVE MISSIONS
+      */
+
+      const updatedMissions = [...missions, newMission];
+
+      setMissions(updatedMissions);
+
+      saveMissions(updatedMissions);
+
+      /*
+        SAVE VALID'S GENERATED TASKS
+      */
+
+      const currentTasks = getTasks();
+
+      const updatedTasks = [...currentTasks, ...newTasks];
+
+      saveTasks(updatedTasks);
+
+      setTasks(updatedTasks);
+
+      /*
+        SAVE MISSION MEMORY
+      */
+
+      saveMissionMemory({
+        title: cleanTitle,
+
+        description: cleanDescription,
+      });
+
+      /*
+        RECORD VALID ACTIVITY
+      */
+
+      recordMissionAnalysis(newMission);
+
+      /*
+        CREATE MANAGER REPORT
+      */
+
+      const report = createManagerReport(newMission, newTasks);
+
+      /*
+        SAVE VALID'S REAL
+        GEMINI ANALYSIS
+      */
+
+      saveManagerMemory({
+        missionTitle: newMission.title,
+
+        analysis: data.analysis,
+
+        decision: `Valid delegated ${newTasks.length} task(s) to ${
+          assignedAgentIds.length
+        } AI agent(s): ${report.tasks
+          .map((task) => task.assignedAgentName)
+          .join(", ")}.`,
+
+        createdAt: new Date().toISOString(),
+      });
+
+      console.log("Valid Orchestration:", data);
+
+      console.log("Mission Report:", report);
+
+      /*
+        UPDATE AGENT MEMORY
+
+        Agents selected by Valid receive
+        their first mission task.
+
+        Everyone else remains idle.
+      */
+
+      const memories: AgentMemory[] = agents.map((agent) => {
+        const agentTasks = newTasks.filter(
+          (task) => task.assignedAgent === agent.id,
+        );
+
+        const firstTask = agentTasks[0];
+
+        if (firstTask) {
+          return {
+            id: agent.id,
+
+            currentTask: firstTask.title,
+
+            missionStatus: "Pending",
+
+            location: "AI Core Meeting Room",
+
+            energy: 100,
+
+            lastAction: `Received mission assignment from Valid: ${firstTask.title}`,
+          };
+        }
+
         return {
           id: agent.id,
 
-          currentTask: `Working on ${title}`,
+          currentTask: "Waiting for assignment",
 
-          missionStatus: "Working",
+          missionStatus: "Idle",
 
-          location: "AI Core Meeting Room",
+          location: "Office",
 
           energy: 100,
 
-          lastAction: "Received new mission from CEO",
+          lastAction: "No active mission",
         };
-      }
+      });
 
-      return {
-        id: agent.id,
+      saveAgentMemory(memories);
 
-        currentTask: "Waiting for assignment",
+      /*
+        SUCCESS UI
+      */
 
-        missionStatus: "Idle",
+      setPlanningMessage(
+        `✅ Valid created ${newTasks.length} task(s) and delegated the mission.`,
+      );
 
-        location: "Office",
+      setTitle("");
 
-        energy: 100,
+      setDescription("");
 
-        lastAction: "No active mission",
-      };
-    });
+      window.setTimeout(() => {
+        setPlanningMessage("");
+      }, 5000);
+    } catch (error) {
+      console.error("Mission orchestration error:", error);
 
-    saveAgentMemory(memories);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Valid failed to orchestrate the mission.";
 
-    setTitle("");
+      setPlanningError(message);
 
-    setDescription("");
-
-    setSelectedAgents([]);
+      setPlanningMessage("");
+    } finally {
+      setIsPlanning(false);
+    }
   }
+
   return (
     <main
       className="
-min-h-screen
-bg-black
-text-white
-p-10
-"
+      min-h-screen
+      bg-black
+      text-white
+      p-10
+      "
     >
       <div
         className="
-max-w-6xl
-mx-auto
-"
+        max-w-6xl
+        mx-auto
+        "
       >
         <Link
           href="/hq"
           className="
-text-gray-400
-hover:text-white
-"
+          text-gray-400
+          hover:text-white
+          "
         >
           ← Back to HQ
         </Link>
 
         <h1
           className="
-text-5xl
-font-bold
-mt-10
-"
+          text-5xl
+          font-bold
+          mt-10
+          "
         >
           📋 Mission Control
         </h1>
 
+        <p
+          className="
+          text-gray-500
+          mt-3
+          text-lg
+          "
+        >
+          Give Valid one mission. Valid will analyse it and delegate work to the
+          AI team.
+        </p>
+
+        {/* CREATE MISSION */}
+
         <section
           className="
-mt-10
-bg-[#080808]
-border
-border-white/10
-rounded-3xl
-p-10
-"
+          mt-10
+          bg-[#080808]
+          border
+          border-white/10
+          rounded-3xl
+          p-10
+          "
         >
-          <h2
+          <div
             className="
-text-3xl
-font-bold
-"
+            flex
+            items-center
+            justify-between
+            gap-5
+            flex-wrap
+            "
           >
-            Create Mission
-          </h2>
+            <div>
+              <h2
+                className="
+                text-3xl
+                font-bold
+                "
+              >
+                🧠 CEO Mission Brief
+              </h2>
+
+              <p
+                className="
+                text-gray-500
+                mt-2
+                "
+              >
+                Valid will choose the required departments automatically.
+              </p>
+            </div>
+
+            <div
+              className="
+              px-4
+              py-2
+              border
+              border-purple-500/20
+              bg-purple-500/10
+              text-purple-300
+              rounded-full
+              text-sm
+              "
+            >
+              Valid Orchestration
+            </div>
+          </div>
+
+          <label
+            className="
+            block
+            text-sm
+            text-gray-400
+            mt-8
+            mb-2
+            "
+          >
+            Mission Title
+          </label>
 
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Mission title"
+            placeholder="What should AI Studio HQ accomplish?"
+            disabled={isPlanning}
             className="
-w-full
-mt-6
-bg-black
-border
-border-white/20
-rounded-xl
-p-4
-"
+            w-full
+            bg-black
+            border
+            border-white/20
+            rounded-xl
+            p-4
+            outline-none
+            focus:border-white/40
+            disabled:opacity-50
+            "
           />
+
+          <label
+            className="
+            block
+            text-sm
+            text-gray-400
+            mt-5
+            mb-2
+            "
+          >
+            Mission Description
+          </label>
 
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Mission description"
+            placeholder="Describe the mission, requirements, goals and constraints..."
+            disabled={isPlanning}
             className="
-w-full
-mt-4
-bg-black
-border
-border-white/20
-rounded-xl
-p-4
-h-32
-"
+            w-full
+            bg-black
+            border
+            border-white/20
+            rounded-xl
+            p-4
+            h-40
+            outline-none
+            resize-none
+            focus:border-white/40
+            disabled:opacity-50
+            "
           />
 
-          <h3
-            className="
-mt-8
-text-xl
-font-bold
-"
-          >
-            Assign AI Team
-          </h3>
+          {/* VALID INFO */}
 
           <div
             className="
-grid
-md:grid-cols-3
-gap-5
-mt-5
-"
+            mt-8
+            bg-black
+            border
+            border-white/10
+            rounded-2xl
+            p-6
+            "
           >
-            {agents.map((agent) => (
-              <button
-                key={agent.id}
-                onClick={() => toggleAgent(agent.id)}
-                className={`
+            <div
+              className="
+              flex
+              gap-4
+              items-start
+              "
+            >
+              <div className="text-4xl">🧠</div>
 
-p-6
-
-rounded-2xl
-
-border
-
-text-left
-
-
-${
-  selectedAgents.includes(agent.id)
-    ? "border-white bg-white/10"
-    : "border-white/10 bg-black"
-}
-
-`}
-              >
-                <div
+              <div>
+                <h3
                   className="
-text-5xl
-"
+                  font-bold
+                  text-lg
+                  "
                 >
-                  {agent.emoji}
-                </div>
-
-                <h4
-                  className="
-text-xl
-font-bold
-mt-3
-"
-                >
-                  {agent.name}
-                </h4>
+                  Valid controls delegation
+                </h3>
 
                 <p
                   className="
-text-blue-400
-"
+                  text-gray-500
+                  mt-2
+                  leading-6
+                  "
                 >
-                  {agent.role}
+                  You no longer need to manually choose agents. Valid will
+                  analyse the mission and select only the specialists that are
+                  actually required.
                 </p>
-
-                {selectedAgents.includes(agent.id) && (
-                  <p
-                    className="
-text-green-400
-mt-3
-"
-                  >
-                    ✓ Assigned
-                  </p>
-                )}
-              </button>
-            ))}
+              </div>
+            </div>
           </div>
 
           <button
+            type="button"
             onClick={launchMission}
+            disabled={isPlanning || !title.trim()}
             className="
-mt-10
-bg-white
-text-black
-px-10
-py-4
-rounded-xl
-font-bold
-"
+            mt-8
+            bg-white
+            text-black
+            px-10
+            py-4
+            rounded-xl
+            font-bold
+            hover:bg-gray-200
+            disabled:opacity-50
+            disabled:cursor-not-allowed
+            transition
+            "
           >
-            🚀 Launch Mission
+            {isPlanning ? "🧠 Valid is Planning..." : "🚀 Launch Mission"}
           </button>
+
+          {planningMessage && (
+            <div
+              className="
+              mt-6
+              bg-blue-500/10
+              border
+              border-blue-500/20
+              text-blue-300
+              rounded-xl
+              p-5
+              "
+            >
+              {planningMessage}
+            </div>
+          )}
+
+          {planningError && (
+            <div
+              className="
+              mt-6
+              bg-yellow-500/10
+              border
+              border-yellow-500/20
+              text-yellow-300
+              rounded-xl
+              p-5
+              "
+            >
+              <p className="font-bold">⚠ Valid Orchestration Error</p>
+
+              <p
+                className="
+                text-gray-400
+                mt-2
+                "
+              >
+                {planningError}
+              </p>
+
+              <p
+                className="
+                text-gray-500
+                text-sm
+                mt-3
+                "
+              >
+                Your mission was not created. You can safely try again later.
+              </p>
+            </div>
+          )}
         </section>
 
-        <section
-          className="
-mt-10
-"
-        >
+        {/* ACTIVE MISSIONS */}
+
+        <section className="mt-10">
           <h2
             className="
-text-3xl
-font-bold
-"
+            text-3xl
+            font-bold
+            "
           >
             Active Missions
           </h2>
-          {missions.map((mission) => (
-            <div
-              key={mission.id}
-              className="
-mt-6
-bg-[#080808]
-border
-border-white/10
-rounded-3xl
-p-8
-"
-            >
-              <h3
-                className="
-text-3xl
-font-bold
-"
-              >
-                {mission.title}
-              </h3>
 
-              <p
-                className="
-text-gray-400
-mt-2
-"
-              >
-                {mission.description}
-              </p>
+          {missions.map((mission) => {
+            const missionProgress = calculateMissionProgress(mission.id);
 
-              <p
-                className="
-text-green-400
-mt-5
-"
-              >
-                Status:
-                {mission.status}
-              </p>
+            const missionStatus = calculateMissionStatus(mission.id);
 
-              <p
-                className="
-mt-5
-"
-              >
-                Progress
-              </p>
+            const missionTasks = tasks.filter(
+              (task) => task.missionId === mission.id,
+            );
 
+            return (
               <div
+                key={mission.id}
                 className="
-w-full
-h-4
-bg-black
-border
-border-white/10
-rounded-full
-mt-2
-"
+                  mt-6
+                  bg-[#080808]
+                  border
+                  border-white/10
+                  rounded-3xl
+                  p-8
+                  "
               >
                 <div
                   className="
-h-4
-bg-white
-rounded-full
-"
-                  style={{
-                    width: `${calculateMissionProgress(mission.id)}%`,
-                  }}
-                />
-              </div>
-
-              <p
-                className="
-mt-2
-"
-              >
-                {calculateMissionProgress(mission.id)}%
-              </p>
-
-              <h4
-                className="
-text-xl
-font-bold
-mt-8
-"
-              >
-                Tasks
-              </h4>
-
-              <div
-                className="
-mt-4
-space-y-4
-"
-              >
-                {tasks
-
-                  .filter((task) => task.missionId === mission.id)
-
-                  .map((task) => (
-                    <div
-                      key={task.id}
+                    flex
+                    items-start
+                    justify-between
+                    gap-5
+                    flex-wrap
+                    "
+                >
+                  <div>
+                    <h3
                       className="
-bg-black
-border
-border-white/10
-rounded-xl
-p-5
-"
+                        text-3xl
+                        font-bold
+                        "
                     >
-                      <p
-                        className="
-font-bold
-text-lg
-"
-                      >
-                        {task.status === "Completed"
-                          ? "✅"
-                          : task.status === "Working"
-                            ? "⚙️"
-                            : "⏳"}{" "}
-                        {task.title}
-                      </p>
+                      {mission.title}
+                    </h3>
 
-                      <p
-                        className="
-text-gray-400
-mt-2
-"
-                      >
-                        {task.description}
-                      </p>
+                    <p
+                      className="
+                        text-gray-400
+                        mt-2
+                        "
+                    >
+                      {mission.description}
+                    </p>
+                  </div>
 
-                      <p
-                        className="
-mt-2
-text-sm
-"
-                      >
-                        Status:
-                        {task.status}
-                      </p>
+                  <span
+                    className="
+                      text-green-400
+                      text-sm
+                      "
+                  >
+                    {missionStatus}
+                  </span>
+                </div>
 
-                      <div
-                        className="
-flex
-gap-3
-mt-4
-"
-                      >
-                        <button
-                          onClick={() => handleStartTask(task.id)}
-                          className="
-bg-blue-600
-px-4
-py-2
-rounded-lg
-"
-                        >
-                          ▶ Start Task
-                        </button>
+                {/* DEPARTMENTS */}
 
-                        <button
-                          onClick={() => handleCompleteTask(task.id)}
-                          className="
-bg-green-600
-px-4
-py-2
-rounded-lg
-"
-                        >
-                          ✅ Complete
-                        </button>
-                      </div>
+                {mission.assignedAgents.length > 0 && (
+                  <div className="mt-6">
+                    <p
+                      className="
+                        text-gray-500
+                        text-sm
+                        "
+                    >
+                      Valid assigned:
+                    </p>
+
+                    <div
+                      className="
+                        flex
+                        flex-wrap
+                        gap-3
+                        mt-3
+                        "
+                    >
+                      {mission.assignedAgents.map((agentId) => {
+                        const agent = agents.find(
+                          (item) => item.id === agentId,
+                        );
+
+                        return (
+                          <span
+                            key={agentId}
+                            className="
+                                bg-black
+                                border
+                                border-white/10
+                                rounded-full
+                                px-4
+                                py-2
+                                text-sm
+                                "
+                          >
+                            {agent?.emoji} {agent?.name ?? `Agent ${agentId}`}
+                          </span>
+                        );
+                      })}
                     </div>
-                  ))}
+                  </div>
+                )}
+
+                {/* PROGRESS */}
+
+                <p className="mt-6">Progress</p>
+
+                <div
+                  className="
+                    w-full
+                    h-4
+                    bg-black
+                    border
+                    border-white/10
+                    rounded-full
+                    mt-2
+                    overflow-hidden
+                    "
+                >
+                  <div
+                    className="
+                      h-4
+                      bg-white
+                      rounded-full
+                      transition-all
+                      "
+                    style={{
+                      width: `${missionProgress}%`,
+                    }}
+                  />
+                </div>
+
+                <p className="mt-2">{missionProgress}%</p>
+
+                {/* TASKS */}
+
+                <h4
+                  className="
+                    text-xl
+                    font-bold
+                    mt-8
+                    "
+                >
+                  Delegated Tasks
+                </h4>
+
+                <div
+                  className="
+                    mt-4
+                    space-y-4
+                    "
+                >
+                  {missionTasks.length === 0 ? (
+                    <p
+                      className="
+                        text-gray-500
+                        "
+                    >
+                      No tasks generated.
+                    </p>
+                  ) : (
+                    missionTasks.map((task) => {
+                      const assignedAgent = agents.find(
+                        (agent) => agent.id === task.assignedAgent,
+                      );
+
+                      return (
+                        <div
+                          key={task.id}
+                          className="
+                              bg-black
+                              border
+                              border-white/10
+                              rounded-xl
+                              p-5
+                              "
+                        >
+                          <div
+                            className="
+                                flex
+                                justify-between
+                                gap-5
+                                flex-wrap
+                                "
+                          >
+                            <div>
+                              <p
+                                className="
+                                    font-bold
+                                    text-lg
+                                    "
+                              >
+                                {task.status === "Completed"
+                                  ? "✅"
+                                  : task.status === "Working"
+                                    ? "⚙️"
+                                    : "⏳"}{" "}
+                                {task.title}
+                              </p>
+
+                              <p
+                                className="
+                                    text-blue-400
+                                    text-sm
+                                    mt-2
+                                    "
+                              >
+                                Assigned by Valid → {assignedAgent?.emoji}{" "}
+                                {assignedAgent?.name ?? "Unknown Agent"}
+                              </p>
+                            </div>
+
+                            <span
+                              className="
+                                  text-sm
+                                  text-gray-400
+                                  "
+                            >
+                              {task.progress}%
+                            </span>
+                          </div>
+
+                          <p
+                            className="
+                                text-gray-400
+                                mt-4
+                                leading-6
+                                "
+                          >
+                            {task.description}
+                          </p>
+
+                          <div
+                            className="
+                                mt-5
+                                h-2
+                                bg-white/10
+                                rounded-full
+                                overflow-hidden
+                                "
+                          >
+                            <div
+                              className="
+                                  h-full
+                                  bg-white
+                                  rounded-full
+                                  "
+                              style={{
+                                width: `${task.progress}%`,
+                              }}
+                            />
+                          </div>
+
+                          <p
+                            className="
+                                mt-3
+                                text-sm
+                                text-gray-500
+                                "
+                          >
+                            Status: {task.status}
+                          </p>
+
+                          <div
+                            className="
+                                flex
+                                gap-3
+                                mt-4
+                                "
+                          >
+                            {task.status === "Pending" && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartTask(task.id)}
+                                className="
+                                    bg-blue-600
+                                    px-4
+                                    py-2
+                                    rounded-lg
+                                    "
+                              >
+                                ▶ Start Task
+                              </button>
+                            )}
+
+                            {task.status !== "Completed" && (
+                              <button
+                                type="button"
+                                onClick={() => handleCompleteTask(task.id)}
+                                className="
+                                    bg-green-600
+                                    px-4
+                                    py-2
+                                    rounded-lg
+                                    "
+                              >
+                                ✅ Complete
+                              </button>
+                            )}
+                          </div>
+
+                          {task.status === "Completed" && task.result && (
+                            <div
+                              className="
+                                    mt-6
+                                    bg-[#080808]
+                                    border
+                                    border-white/10
+                                    rounded-xl
+                                    p-5
+                                    "
+                            >
+                              <p className="font-bold">📄 Work Result</p>
+
+                              <pre
+                                className="
+                                      whitespace-pre-wrap
+                                      font-sans
+                                      text-sm
+                                      text-gray-300
+                                      leading-6
+                                      mt-4
+                                      "
+                              >
+                                {task.result}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       </div>
     </main>

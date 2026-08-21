@@ -1,8 +1,9 @@
-import { Mission } from "@/data/missions";
-import { MissionTask } from "@/data/tasks";
+import type { Mission } from "@/data/missions";
+import type { MissionTask } from "@/data/tasks";
 import { saveActivity } from "@/lib/activityMemory";
+import { agents } from "@/data/agents";
 
-export function analyseMission(mission: Mission) {
+export function recordMissionAnalysis(mission: Mission) {
   saveActivity({
     id: Date.now(),
 
@@ -12,29 +13,26 @@ export function analyseMission(mission: Mission) {
 
     message: `Valid analysed mission: ${mission.title}`,
   });
-
-  return {
-    agent: "Valid",
-
-    analysis: `Analysing mission: ${mission.title}`,
-
-    decision:
-      "Mission requires planning, development, design, and business analysis.",
-  };
 }
 
 export function createManagerReport(mission: Mission, tasks: MissionTask[]) {
   return {
     title: `Mission Report: ${mission.title}`,
 
-    summary: `Valid analysed ${tasks.length} tasks and prepared AI team workflow.`,
+    summary: `Valid prepared ${tasks.length} delegated task(s) for the AI team.`,
 
-    tasks: tasks.map((task) => ({
-      task: task.title,
+    tasks: tasks.map((task) => {
+      const agent = agents.find((item) => item.id === task.assignedAgent);
 
-      assignedAgent: task.assignedAgent,
+      return {
+        task: task.title,
 
-      status: task.status,
-    })),
+        assignedAgent: task.assignedAgent,
+
+        assignedAgentName: agent?.name ?? "Unknown Agent",
+
+        status: task.status,
+      };
+    }),
   };
 }
