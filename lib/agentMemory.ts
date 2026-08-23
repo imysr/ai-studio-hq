@@ -30,11 +30,28 @@ const defaultMemory: AgentMemory[] = agents.map((agent) => ({
   lastAction: "No active mission",
 }));
 
+/*
+  SAVE AGENT MEMORY
+
+  During migration:
+  1. localStorage remains immediate.
+  2. the same memory state syncs to
+     Supabase in the background.
+*/
+
 export function saveAgentMemory(agentsMemory: AgentMemory[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(agentsMemory));
+  if (typeof window === "undefined") {
+    return;
   }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(agentsMemory));
+
+  void syncAgentMemoryToSupabase(agentsMemory);
 }
+
+/*
+  GET AGENT MEMORY
+*/
 
 export function getAgentMemory(): AgentMemory[] {
   if (typeof window === "undefined") {
@@ -49,5 +66,51 @@ export function getAgentMemory(): AgentMemory[] {
     return defaultMemory;
   }
 
-  return JSON.parse(data);
+  try {
+    return JSON.parse(data) as AgentMemory[];
+  } catch {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultMemory));
+
+    return defaultMemory;
+  }
+}
+
+/*
+  SUPABASE AGENT MEMORY SYNC
+*/
+
+async function syncAgentMemoryToSupabase(memories: AgentMemory[]) {
+  if (memories.length === 0) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/agent-memory", {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify(memories),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase agent memory synchronization failed:", data);
+
+      return;
+    }
+
+    const data = await response.json();
+
+    console.log(
+      `Supabase synchronized ${
+        data.synced ?? memories.length
+      } agent memory record(s).`,
+    );
+  } catch (error) {
+    console.error("Supabase agent memory synchronization error:", error);
+  }
 }

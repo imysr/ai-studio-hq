@@ -185,20 +185,38 @@ function getRetryText(retryAt: string) {
 }
 
 export default function HQPage() {
-  const [tasks, setTasks] = useState<MissionTask[]>(() => getTasks());
+  /*
+    HYDRATION-SAFE INITIAL STATE
 
-  const [aiRequestState, setAIRequestState] = useState<AIRequestState>(() =>
-    getAIRequestState(),
-  );
+    The server and first browser render
+    must use the same values.
+
+    Real localStorage values are loaded
+    only after the component mounts.
+  */
+
+  const [tasks, setTasks] = useState<MissionTask[]>([]);
+
+  const [aiRequestState, setAIRequestState] = useState<AIRequestState>({
+    status: "Idle",
+
+    activeRequests: 0,
+
+    queuedRequests: 0,
+
+    failedRequests: 0,
+
+    lastError: "",
+
+    retryAt: "",
+  });
 
   /*
     LIVE HQ SYNCHRONIZATION
 
-    Refresh local task + AI request
-    state once every second.
-
-    This lets HQ update while agents
-    work without manually refreshing.
+    Once mounted in the browser,
+    read task + AI request state
+    from localStorage every second.
   */
 
   useEffect(() => {
@@ -1005,8 +1023,6 @@ export default function HQPage() {
                 >
                   {agent.role}
                 </p>
-
-                {/* CURRENT TASK */}
 
                 <div
                   className="

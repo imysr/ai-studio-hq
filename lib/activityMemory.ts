@@ -49,11 +49,7 @@ export function saveActivity(activity: ActivityMemory) {
 
     Sync the current activity history.
 
-    This is more reliable during the
-    migration phase than sending only
-    one fire-and-forget event.
-
-    It also backfills older activities
+    This also backfills older activities
     that currently exist only locally.
   */
 
