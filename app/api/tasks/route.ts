@@ -26,8 +26,6 @@ type MissionTaskInput = {
 
 /*
   GET TASKS
-
-  Reads mission tasks from Supabase.
 */
 
 export async function GET() {
@@ -75,13 +73,10 @@ export async function GET() {
   CREATE / UPSERT TASKS
 
   During migration, localStorage may
-  still contain old tasks whose missions
-  do not yet exist in Supabase.
+  contain old tasks whose parent
+  missions are not in Supabase.
 
-  We therefore:
-  1. Find which mission IDs exist.
-  2. Sync only tasks with valid parents.
-  3. Skip old local-only tasks safely.
+  Those tasks are skipped safely.
 */
 
 export async function POST(request: Request) {
@@ -125,23 +120,17 @@ export async function POST(request: Request) {
     }
 
     /*
-      FIND PARENT MISSIONS
-
-      A task cannot be inserted if its
-      mission does not exist because
-      mission_tasks has a foreign key
-      to missions.
+      FIND WHICH PARENT MISSIONS
+      CURRENTLY EXIST IN SUPABASE.
     */
 
     const missionIds = [...new Set(validTasks.map((task) => task.missionId))];
 
-    const { data: existingMissions, error: missionError } = await supabaseServer
-      .from("missions")
-      .select("id")
-      .in("id", missionIds);
+    const { data: existingMissions, error: missionLookupError } =
+      await supabaseServer.from("missions").select("id").in("id", missionIds);
 
-    if (missionError) {
-      console.error("Supabase mission lookup error:", missionError);
+    if (missionLookupError) {
+      console.error("Supabase mission lookup error:", missionLookupError);
 
       return NextResponse.json(
         {
@@ -157,14 +146,6 @@ export async function POST(request: Request) {
       (existingMissions ?? []).map((mission) => Number(mission.id)),
     );
 
-    /*
-      TEMPORARY MIGRATION FILTER
-
-      Old localStorage tasks are skipped
-      until their parent missions are
-      migrated to Supabase.
-    */
-
     const syncableTasks = validTasks.filter((task) =>
       existingMissionIds.has(task.missionId),
     );
@@ -174,10 +155,6 @@ export async function POST(request: Request) {
     );
 
     if (syncableTasks.length === 0) {
-      console.warn(
-        `Supabase task sync skipped ${skippedTasks.length} task(s) because their parent missions are not in Supabase yet.`,
-      );
-
       return NextResponse.json({
         success: true,
 
@@ -186,12 +163,14 @@ export async function POST(request: Request) {
         synced: 0,
 
         skipped: skippedTasks.length,
+
+        missionsUpdated: 0,
       });
     }
 
     /*
-      CONVERT CLIENT TASK SHAPE
-      TO DATABASE COLUMN SHAPE
+      CONVERT APPLICATION TASKS
+      INTO DATABASE ROWS.
     */
 
     const taskRows = syncableTasks.map((task) => ({
@@ -217,10 +196,7 @@ export async function POST(request: Request) {
     }));
 
     /*
-      UPSERT
-
-      Existing task IDs are updated.
-      New task IDs are inserted.
+      UPSERT TASKS
     */
 
     const { data, error } = await supabaseServer
@@ -243,6 +219,60 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+      UPDATE PARENT MISSION
+      PROGRESS + STATUS.
+
+      We calculate from the complete
+      task list supplied by the client,
+      not only the rows that changed.
+    */
+
+    const affectedMissionIds = [
+      ...new Set(syncableTasks.map((task) => task.missionId)),
+    ];
+
+    let missionsUpdated = 0;
+
+    for (const missionId of affectedMissionIds) {
+      const missionTasks = syncableTasks.filter(
+        (task) => task.missionId === missionId,
+      );
+
+      if (missionTasks.length === 0) {
+        continue;
+      }
+
+      const completedTasks = missionTasks.filter(
+        (task) => task.status === "Completed",
+      ).length;
+
+      const progress = Math.round((completedTasks / missionTasks.length) * 100);
+
+      const status =
+        progress === 100 ? "Completed" : progress === 0 ? "Planning" : "Active";
+
+      const { error: missionUpdateError } = await supabaseServer
+        .from("missions")
+        .update({
+          progress,
+
+          status,
+        })
+        .eq("id", missionId);
+
+      if (missionUpdateError) {
+        console.error(
+          `Failed to update mission ${missionId} progress:`,
+          missionUpdateError,
+        );
+
+        continue;
+      }
+
+      missionsUpdated += 1;
+    }
+
     if (skippedTasks.length > 0) {
       console.warn(
         `Supabase synchronized ${syncableTasks.length} task(s) and skipped ${skippedTasks.length} old local task(s).`,
@@ -257,6 +287,8 @@ export async function POST(request: Request) {
       synced: syncableTasks.length,
 
       skipped: skippedTasks.length,
+
+      missionsUpdated,
     });
   } catch (error) {
     console.error("Task POST API error:", error);
