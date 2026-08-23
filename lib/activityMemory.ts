@@ -18,11 +18,8 @@ export function saveActivity(activity: ActivityMemory) {
   const existing = getActivities();
 
   /*
-    Make sure every activity has a unique ID.
-
-    Several AI agents can perform actions within
-    the same millisecond, so Date.now() alone
-    can occasionally create duplicate IDs.
+    Ensure every activity has
+    a unique numeric ID.
   */
 
   let uniqueId = activity.id;
@@ -41,7 +38,26 @@ export function saveActivity(activity: ActivityMemory) {
 
   const updated = [safeActivity, ...existing];
 
+  /*
+    LOCAL PERSISTENCE
+  */
+
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+  /*
+    SUPABASE SYNCHRONIZATION
+
+    Sync the current activity history.
+
+    This is more reliable during the
+    migration phase than sending only
+    one fire-and-forget event.
+
+    It also backfills older activities
+    that currently exist only locally.
+  */
+
+  void syncActivitiesToSupabase(updated);
 }
 
 export function getActivities(): ActivityMemory[] {
@@ -56,7 +72,7 @@ export function getActivities(): ActivityMemory[] {
   }
 
   try {
-    return JSON.parse(data);
+    return JSON.parse(data) as ActivityMemory[];
   } catch {
     return [];
   }
@@ -68,4 +84,44 @@ export function clearActivities() {
   }
 
   localStorage.removeItem(STORAGE_KEY);
+}
+
+/*
+  SUPABASE ACTIVITY SYNC
+*/
+
+async function syncActivitiesToSupabase(activities: ActivityMemory[]) {
+  if (activities.length === 0) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/activity", {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify(activities),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase activity synchronization failed:", data);
+
+      return;
+    }
+
+    const data = await response.json();
+
+    console.log(
+      `Supabase synchronized ${
+        data.synced ?? activities.length
+      } activity log(s).`,
+    );
+  } catch (error) {
+    console.error("Supabase activity synchronization error:", error);
+  }
 }

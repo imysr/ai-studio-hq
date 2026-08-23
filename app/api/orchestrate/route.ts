@@ -304,14 +304,70 @@ async function requestValidPlan(
         },
       );
 
-      const data = await response.json();
+      /*
+        READ AS TEXT FIRST
+
+        Gemini normally returns JSON,
+        but an upstream/server failure
+        can occasionally return plain
+        text such as:
+
+        Internal Server Error
+
+        Calling response.json() directly
+        would expose an ugly JSON parser
+        error to Mission Control.
+      */
+
+      const responseText = await response.text();
+
+      let data: {
+        error?: {
+          message?: string;
+        };
+
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{
+              text?: string;
+            }>;
+          };
+        }>;
+      } | null = null;
+
+      try {
+        data = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        /*
+          Plain-text upstream failure.
+
+          We deliberately do not expose
+          the raw HTML/text response to
+          Mission Control.
+        */
+
+        if (!response.ok) {
+          throw new Error(
+            `Gemini temporarily returned an invalid server response (HTTP ${response.status}).`,
+          );
+        }
+
+        throw new Error("Gemini returned an unreadable response.");
+      }
+
+      /*
+        GEMINI ERROR RESPONSE
+      */
 
       if (!response.ok) {
         const message =
-          data?.error?.message ?? "Valid failed to analyse the mission.";
+          data?.error?.message ??
+          `Gemini request failed with HTTP ${response.status}.`;
 
         /*
-          Do not retry permanent errors.
+          Permanent errors such as
+          invalid API configuration
+          should not waste retries.
         */
 
         if (!RETRYABLE_STATUS_CODES.includes(response.status)) {
@@ -321,9 +377,13 @@ async function requestValidPlan(
         throw new Error(message);
       }
 
+      /*
+        EXTRACT VALID'S RESULT
+      */
+
       const rawResult =
         data?.candidates?.[0]?.content?.parts
-          ?.map((part: { text?: string }) => part.text ?? "")
+          ?.map((part) => part.text ?? "")
           .join("")
           .trim() ?? "";
 
@@ -338,8 +398,10 @@ async function requestValidPlan(
       return rawResult;
     } catch (error) {
       /*
-        Permanent errors should
-        never trigger retries.
+        PERMANENT ERRORS
+
+        Do not retry API-key/configuration
+        problems.
       */
 
       if (error instanceof PermanentOrchestrationError) {
@@ -368,7 +430,19 @@ async function requestValidPlan(
     }
   }
 
-  throw lastError ?? new Error("Valid failed to analyse the mission.");
+  /*
+    All automatic retries failed.
+
+    Give Mission Control a clean,
+    human-readable error instead of
+    leaking JSON parser errors.
+  */
+
+  throw new Error(
+    lastError?.message
+      ? `Valid could not complete orchestration: ${lastError.message}`
+      : "Valid could not complete orchestration. Please try again later.",
+  );
 }
 
 /*
