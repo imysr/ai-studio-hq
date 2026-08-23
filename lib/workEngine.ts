@@ -4,6 +4,15 @@ import { getAgentMemory, saveAgentMemory } from "@/lib/agentMemory";
 import { agents } from "@/data/agents";
 import type { MissionTask } from "@/data/tasks";
 
+import {
+  markAIRequestStarted,
+  markAIRequestCompleted,
+  markAIRequestRateLimited,
+  markAIRequestWaiting,
+  markQueuedRequestStarted,
+  markAIRequestFailed,
+} from "@/lib/aiRequestManager";
+
 /*
   REAL AI AGENTS
 
@@ -310,7 +319,7 @@ ${contextTask.title}
 
 Completed Result:
 ${contextTask.result}
-        `.trim();
+          `.trim();
     })
     .join("\n\n------------------------------\n\n");
 
@@ -342,9 +351,52 @@ Your response should remain focused on your own specialist responsibility.
 }
 
 /*
+  AI REQUEST ERROR HELPERS
+
+  These allow the shared request manager
+  to understand Gemini quota errors.
+*/
+
+function getRetryAfterSeconds(errorMessage: string): number {
+  const match = errorMessage.match(/retry\s+in\s+([\d.]+)\s*s/i);
+
+  if (!match) {
+    return 10;
+  }
+
+  const seconds = Number.parseFloat(match[1]);
+
+  if (!Number.isFinite(seconds)) {
+    return 10;
+  }
+
+  /*
+    Small buffer prevents us from
+    retrying at the exact reset moment.
+  */
+
+  return Math.max(2, Math.ceil(seconds) + 2);
+}
+
+function isRateLimitError(errorMessage: string): boolean {
+  const normalized = errorMessage.toLowerCase();
+
+  return (
+    normalized.includes("quota") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("resource_exhausted") ||
+    normalized.includes("429")
+  );
+}
+
+/*
   REQUEST AI RESULT
 
-  Handles automatic retries.
+  Handles:
+  - shared AI request manager
+  - automatic retries
+  - quota-aware waiting
+  - queue tracking
 
   IMPORTANT:
   This does NOT reset task progress.
@@ -361,8 +413,37 @@ async function requestAIResult(
 
   const totalAttempts = AUTO_RETRY_DELAYS.length + 1;
 
+  /*
+    Tracks whether the request was
+    actually moved into the queue.
+
+    Normal temporary failures remain
+    active and therefore must NOT call
+    markQueuedRequestStarted().
+  */
+
+  let queuedForRetry = false;
+
+  /*
+    Initial Gemini request.
+  */
+
+  markAIRequestStarted();
+
   for (let attempt = 0; attempt < totalAttempts; attempt++) {
     try {
+      /*
+        If the previous failure was
+        rate-limited, move the queued
+        request back into Processing.
+      */
+
+      if (queuedForRetry) {
+        markQueuedRequestStarted();
+
+        queuedForRetry = false;
+      }
+
       const response = await fetch("/api/ai", {
         method: "POST",
 
@@ -391,23 +472,69 @@ async function requestAIResult(
         throw new Error(`${agentName} returned an empty AI result.`);
       }
 
+      /*
+        SUCCESS
+      */
+
+      markAIRequestCompleted();
+
       return result;
     } catch (error) {
       lastError =
         error instanceof Error ? error : new Error("Unknown AI request error.");
 
+      const errorMessage = lastError.message;
+
+      const rateLimited = isRateLimitError(errorMessage);
+
       /*
-        If this was our final
-        allowed attempt, stop.
+        FINAL FAILURE
+
+        No more retries remain.
       */
 
       if (attempt >= AUTO_RETRY_DELAYS.length) {
+        markAIRequestFailed(errorMessage);
+
         break;
       }
 
       const retryNumber = attempt + 1;
 
-      const delay = AUTO_RETRY_DELAYS[attempt];
+      /*
+        Normal temporary failures use
+        our existing retry delays.
+
+        Rate-limit failures use
+        Gemini's suggested retry time.
+      */
+
+      let delay = AUTO_RETRY_DELAYS[attempt];
+
+      if (rateLimited) {
+        const retrySeconds = getRetryAfterSeconds(errorMessage);
+
+        delay = retrySeconds * 1000;
+
+        /*
+          Rate-limited request leaves
+          active processing and enters
+          the queue.
+        */
+
+        markAIRequestRateLimited(retrySeconds, errorMessage);
+
+        queuedForRetry = true;
+      } else {
+        /*
+          Normal retry remains an active
+          request, but the state tells
+          the HQ that the request is
+          temporarily waiting.
+        */
+
+        markAIRequestWaiting();
+      }
 
       console.warn(
         `${agentName} AI attempt failed. Automatic retry ${retryNumber}/${AUTO_RETRY_DELAYS.length} in ${delay}ms.`,
@@ -419,9 +546,11 @@ async function requestAIResult(
 
         time: new Date().toLocaleTimeString(),
 
-        icon: "🔄",
+        icon: rateLimited ? "⏳" : "🔄",
 
-        message: `${agentName} automatic AI retry ${retryNumber}/${AUTO_RETRY_DELAYS.length} for ${task.title}`,
+        message: rateLimited
+          ? `${agentName} is waiting for Gemini capacity before retrying ${task.title}`
+          : `${agentName} automatic AI retry ${retryNumber}/${AUTO_RETRY_DELAYS.length} for ${task.title}`,
       });
 
       updateAgentRetryMemory(task);
@@ -503,8 +632,9 @@ async function completeRealAITask(task: MissionTask) {
     /*
       This function performs:
       - Initial Gemini request
+      - Shared request-manager tracking
       - Automatic retries
-      - Increasing retry delays
+      - Quota-aware waiting
     */
 
     const result = await requestAIResult(agent.name, task);

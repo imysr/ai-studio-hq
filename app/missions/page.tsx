@@ -27,6 +27,14 @@ import { recordMissionAnalysis, createManagerReport } from "@/lib/aiManager";
 
 import { getManagerMemory, saveManagerMemory } from "@/lib/managerMemory";
 
+import {
+  markAIRequestStarted,
+  markAIRequestCompleted,
+  markAIRequestRateLimited,
+  markQueuedRequestStarted,
+  markAIRequestFailed,
+} from "@/lib/aiRequestManager";
+
 type AgentMemory = {
   id: number;
   currentTask: string;
@@ -272,12 +280,6 @@ export default function Missions() {
 
     const MAX_RETRIES = 3;
 
-    /*
-    Extract Gemini's suggested retry delay.
-
-    Example Gemini error:
-    "Please retry in 43.886353754s."
-  */
     function getRetryDelay(errorMessage: string) {
       const retryMatch = errorMessage.match(/retry\s+in\s+([\d.]+)\s*s/i);
 
@@ -291,10 +293,6 @@ export default function Missions() {
         return 10;
       }
 
-      /*
-      Add a small buffer so we do not retry
-      at the exact moment Gemini's limit resets.
-    */
       return Math.max(2, Math.ceil(seconds) + 2);
     }
 
@@ -316,10 +314,22 @@ export default function Missions() {
       });
     }
 
+    let requestManagerStarted = false;
+    let queuedForRetry = false;
+    let requestManagerFinished = false;
+
     try {
       let data: OrchestrationResponse | null = null;
 
+      markAIRequestStarted();
+      requestManagerStarted = true;
+
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+        if (queuedForRetry) {
+          markQueuedRequestStarted();
+          queuedForRetry = false;
+        }
+
         if (attempt > 0) {
           setPlanningError("");
           setPlanningMessage(
@@ -344,37 +354,39 @@ export default function Missions() {
 
         if (response.ok) {
           data = responseData;
+
+          markAIRequestCompleted();
+          requestManagerFinished = true;
+
           break;
         }
 
         const errorMessage =
           responseData.error ?? "Valid failed to plan the mission.";
 
-        /*
-        Normal errors should NOT automatically retry.
-
-        Auto-retry is only for temporary Gemini
-        capacity / quota / rate-limit errors.
-      */
         if (!isQuotaError(errorMessage)) {
+          markAIRequestFailed(errorMessage);
+          requestManagerFinished = true;
+
           throw new Error(errorMessage);
         }
 
-        /*
-        We have already used every retry.
-      */
         if (attempt === MAX_RETRIES) {
-          throw new Error(
-            "Gemini is still unavailable after 3 automatic retries. Please try the mission again later.",
-          );
+          const finalError =
+            "Gemini is still unavailable after 3 automatic retries. Please try the mission again later.";
+
+          markAIRequestFailed(finalError);
+          requestManagerFinished = true;
+
+          throw new Error(finalError);
         }
 
         const retryDelaySeconds = getRetryDelay(errorMessage);
 
-        /*
-        Countdown so the user can see exactly
-        what Valid is doing.
-      */
+        markAIRequestRateLimited(retryDelaySeconds, errorMessage);
+
+        queuedForRetry = true;
+
         for (let remaining = retryDelaySeconds; remaining > 0; remaining -= 1) {
           setPlanningMessage(
             `⏳ Gemini is temporarily rate limited. Valid will retry automatically in ${remaining}s — Retry ${
@@ -394,10 +406,6 @@ export default function Missions() {
       ) {
         throw new Error("Valid returned an incomplete mission plan.");
       }
-
-      /*
-      ORCHESTRATION SUCCEEDED
-    */
 
       setPlanningMessage("🧠 Valid finished analysing. Creating mission...");
 
@@ -427,19 +435,11 @@ export default function Missions() {
         finalDeliverableCreatedAt: "",
       };
 
-      /*
-      SAVE MISSION
-    */
-
       const updatedMissions = [...missions, newMission];
 
       setMissions(updatedMissions);
 
       saveMissions(updatedMissions);
-
-      /*
-      SAVE GENERATED TASKS
-    */
 
       const currentTasks = getTasks();
 
@@ -449,18 +449,10 @@ export default function Missions() {
 
       setTasks(updatedTasks);
 
-      /*
-      MISSION MEMORY
-    */
-
       saveMissionMemory({
         title: cleanTitle,
         description: cleanDescription,
       });
-
-      /*
-      VALID MANAGER ANALYSIS
-    */
 
       recordMissionAnalysis(newMission);
 
@@ -483,10 +475,6 @@ export default function Missions() {
       console.log("Valid Orchestration:", data);
 
       console.log("Mission Report:", report);
-
-      /*
-      UPDATE AI EMPLOYEE MEMORY
-    */
 
       const memories: AgentMemory[] = agents.map((agent) => {
         const agentTasks = newTasks.filter(
@@ -528,10 +516,6 @@ export default function Missions() {
 
       saveAgentMemory(memories);
 
-      /*
-      SUCCESS
-    */
-
       setPlanningError("");
 
       setPlanningMessage(
@@ -551,6 +535,11 @@ export default function Missions() {
         error instanceof Error
           ? error.message
           : "Valid failed to orchestrate the mission.";
+
+      if (requestManagerStarted && !requestManagerFinished) {
+        markAIRequestFailed(message);
+        requestManagerFinished = true;
+      }
 
       setPlanningError(message);
 

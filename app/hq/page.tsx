@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { agents } from "@/data/agents";
 import type { MissionTask } from "@/data/tasks";
 
 import { getTasks } from "@/lib/taskStorage";
+
+import { getAIRequestState, type AIRequestState } from "@/lib/aiRequestManager";
 
 type AgentOperationalStatus = "Working" | "Waiting" | "Assigned" | "Idle";
 
@@ -97,8 +99,123 @@ function getStatusClasses(status: AgentOperationalStatus) {
   }
 }
 
+function getAIStatusClasses(status: AIRequestState["status"]) {
+  switch (status) {
+    case "Processing":
+      return {
+        text: "text-green-400",
+
+        border: "border-green-500/20",
+
+        background: "bg-green-500/10",
+
+        dot: "bg-green-400",
+      };
+
+    case "Rate Limited":
+      return {
+        text: "text-yellow-400",
+
+        border: "border-yellow-500/20",
+
+        background: "bg-yellow-500/10",
+
+        dot: "bg-yellow-400",
+      };
+
+    case "Waiting":
+      return {
+        text: "text-blue-400",
+
+        border: "border-blue-500/20",
+
+        background: "bg-blue-500/10",
+
+        dot: "bg-blue-400",
+      };
+
+    case "Error":
+      return {
+        text: "text-red-400",
+
+        border: "border-red-500/20",
+
+        background: "bg-red-500/10",
+
+        dot: "bg-red-400",
+      };
+
+    default:
+      return {
+        text: "text-gray-400",
+
+        border: "border-white/10",
+
+        background: "bg-white/[0.03]",
+
+        dot: "bg-gray-500",
+      };
+  }
+}
+
+function getRetryText(retryAt: string) {
+  if (!retryAt) {
+    return "—";
+  }
+
+  const retryTime = new Date(retryAt).getTime();
+
+  const remaining = retryTime - Date.now();
+
+  if (remaining <= 0) {
+    return "Ready";
+  }
+
+  const seconds = Math.ceil(remaining / 1000);
+
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  const leftoverSeconds = seconds % 60;
+
+  return `${minutes}m ${leftoverSeconds}s`;
+}
+
 export default function HQPage() {
-  const [tasks] = useState<MissionTask[]>(getTasks());
+  const [tasks, setTasks] = useState<MissionTask[]>(() => getTasks());
+
+  const [aiRequestState, setAIRequestState] = useState<AIRequestState>(() =>
+    getAIRequestState(),
+  );
+
+  /*
+    LIVE HQ SYNCHRONIZATION
+
+    Refresh local task + AI request
+    state once every second.
+
+    This lets HQ update while agents
+    work without manually refreshing.
+  */
+
+  useEffect(() => {
+    const syncHQ = () => {
+      setTasks(getTasks());
+
+      setAIRequestState(getAIRequestState());
+    };
+
+    syncHQ();
+
+    const interval = window.setInterval(syncHQ, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const workingAgents = agents.filter(
     (agent) => getAgentOperationalStatus(agent.id, tasks) === "Working",
@@ -108,9 +225,15 @@ export default function HQPage() {
     (agent) => getAgentOperationalStatus(agent.id, tasks) === "Waiting",
   ).length;
 
+  const assignedAgents = agents.filter(
+    (agent) => getAgentOperationalStatus(agent.id, tasks) === "Assigned",
+  ).length;
+
   const idleAgents = agents.filter(
     (agent) => getAgentOperationalStatus(agent.id, tasks) === "Idle",
   ).length;
+
+  const aiStatusClasses = getAIStatusClasses(aiRequestState.status);
 
   return (
     <main
@@ -164,6 +287,280 @@ export default function HQPage() {
           </p>
         </header>
 
+        {/* AI REQUEST MANAGER */}
+
+        <section
+          className="
+          mb-8
+          bg-[#080808]
+          border
+          border-white/10
+          rounded-3xl
+          p-8
+          "
+        >
+          <div
+            className="
+            flex
+            items-start
+            justify-between
+            gap-6
+            flex-wrap
+            "
+          >
+            <div>
+              <p
+                className="
+                text-xs
+                uppercase
+                tracking-widest
+                text-gray-600
+                "
+              >
+                AI Infrastructure
+              </p>
+
+              <h2
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                🧠 AI Request Manager
+              </h2>
+
+              <p
+                className="
+                text-gray-500
+                mt-2
+                "
+              >
+                Shared Gemini request, queue and retry status across Valid and
+                all specialist agents.
+              </p>
+            </div>
+
+            <div
+              className={`
+              inline-flex
+              items-center
+              gap-2
+              px-4
+              py-2
+              rounded-full
+              border
+              text-sm
+              ${aiStatusClasses.border}
+              ${aiStatusClasses.background}
+              ${aiStatusClasses.text}
+              `}
+            >
+              <span
+                className={`
+                w-2
+                h-2
+                rounded-full
+                ${aiStatusClasses.dot}
+                `}
+              />
+
+              {aiRequestState.status}
+            </div>
+          </div>
+
+          <div
+            className="
+            grid
+            sm:grid-cols-2
+            lg:grid-cols-5
+            gap-4
+            mt-8
+            "
+          >
+            <div
+              className="
+              bg-black
+              border
+              border-white/10
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-gray-500
+                text-sm
+                "
+              >
+                Provider
+              </p>
+
+              <p
+                className="
+                text-xl
+                font-bold
+                mt-2
+                "
+              >
+                Gemini
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-black
+              border
+              border-green-500/20
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-green-400
+                text-sm
+                "
+              >
+                Active Requests
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {aiRequestState.activeRequests}
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-black
+              border
+              border-yellow-500/20
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-yellow-400
+                text-sm
+                "
+              >
+                Queued
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {aiRequestState.queuedRequests}
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-black
+              border
+              border-red-500/20
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-red-400
+                text-sm
+                "
+              >
+                Failed
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {aiRequestState.failedRequests}
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-black
+              border
+              border-white/10
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-gray-500
+                text-sm
+                "
+              >
+                Next Retry
+              </p>
+
+              <p
+                className="
+                text-xl
+                font-bold
+                mt-2
+                "
+              >
+                {getRetryText(aiRequestState.retryAt)}
+              </p>
+            </div>
+          </div>
+
+          {aiRequestState.lastError && (
+            <div
+              className="
+              mt-5
+              bg-black
+              border
+              border-white/10
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-xs
+                uppercase
+                tracking-widest
+                text-gray-600
+                "
+              >
+                Last AI Event
+              </p>
+
+              <p
+                className="
+                text-gray-400
+                text-sm
+                leading-6
+                mt-2
+                break-words
+                "
+              >
+                {aiRequestState.lastError}
+              </p>
+            </div>
+          )}
+        </section>
+
         {/* LIVE OPERATIONS */}
 
         <section
@@ -213,7 +610,7 @@ export default function HQPage() {
                 mt-2
                 "
               >
-                Current operational state based on real mission tasks.
+                Current employee state based on real mission tasks.
               </p>
             </div>
 
@@ -229,14 +626,15 @@ export default function HQPage() {
               text-sm
               "
             >
-              ● System Online
+              ● HQ Online
             </div>
           </div>
 
           <div
             className="
             grid
-            md:grid-cols-4
+            sm:grid-cols-2
+            lg:grid-cols-5
             gap-4
             mt-8
             "
@@ -296,6 +694,35 @@ export default function HQPage() {
                 "
               >
                 {workingAgents}
+              </p>
+            </div>
+
+            <div
+              className="
+              bg-black
+              border
+              border-blue-500/20
+              rounded-2xl
+              p-5
+              "
+            >
+              <p
+                className="
+                text-blue-400
+                text-sm
+                "
+              >
+                Assigned
+              </p>
+
+              <p
+                className="
+                text-3xl
+                font-bold
+                mt-2
+                "
+              >
+                {assignedAgents}
               </p>
             </div>
 
@@ -449,7 +876,7 @@ export default function HQPage() {
           </div>
         </Link>
 
-        {/* EMPLOYEE ROOMS */}
+        {/* DEPARTMENTS */}
 
         <div
           className="
@@ -500,51 +927,51 @@ export default function HQPage() {
               <div
                 key={agent.id}
                 className="
-                bg-[#080808]
-                border
-                border-white/10
-                rounded-3xl
-                p-8
-                hover:border-white/30
-                transition
-                "
+                  bg-[#080808]
+                  border
+                  border-white/10
+                  rounded-3xl
+                  p-8
+                  hover:border-white/30
+                  transition
+                  "
               >
                 <div
                   className="
-                  flex
-                  items-start
-                  justify-between
-                  gap-4
-                  "
+                    flex
+                    items-start
+                    justify-between
+                    gap-4
+                    "
                 >
                   <div
                     className="
-                    text-7xl
-                    "
+                      text-7xl
+                      "
                   >
                     {agent.emoji}
                   </div>
 
                   <div
                     className={`
-                    inline-flex
-                    items-center
-                    gap-2
-                    px-3
-                    py-2
-                    rounded-full
-                    border
-                    text-xs
-                    ${statusClasses.badge}
-                    `}
+                      inline-flex
+                      items-center
+                      gap-2
+                      px-3
+                      py-2
+                      rounded-full
+                      border
+                      text-xs
+                      ${statusClasses.badge}
+                      `}
                   >
                     <span
                       className={`
-                      w-2
-                      h-2
-                      rounded-full
-                      ${statusClasses.dot}
-                      `}
+                        w-2
+                        h-2
+                        rounded-full
+                        ${statusClasses.dot}
+                        `}
                     />
 
                     {status}
@@ -553,28 +980,28 @@ export default function HQPage() {
 
                 <h3
                   className="
-                  text-3xl
-                  font-bold
-                  mt-5
-                  "
+                    text-3xl
+                    font-bold
+                    mt-5
+                    "
                 >
                   {agent.name}
                 </h3>
 
                 <p
                   className="
-                  text-blue-400
-                  mt-2
-                  "
+                    text-blue-400
+                    mt-2
+                    "
                 >
                   {agent.department}
                 </p>
 
                 <p
                   className="
-                  text-gray-500
-                  mt-2
-                  "
+                    text-gray-500
+                    mt-2
+                    "
                 >
                   {agent.role}
                 </p>
@@ -583,31 +1010,31 @@ export default function HQPage() {
 
                 <div
                   className="
-                  mt-6
-                  bg-black
-                  border
-                  border-white/10
-                  rounded-2xl
-                  p-4
-                  "
+                    mt-6
+                    bg-black
+                    border
+                    border-white/10
+                    rounded-2xl
+                    p-4
+                    "
                 >
                   <p
                     className="
-                    text-xs
-                    uppercase
-                    tracking-widest
-                    text-gray-600
-                    "
+                      text-xs
+                      uppercase
+                      tracking-widest
+                      text-gray-600
+                      "
                   >
                     Current Assignment
                   </p>
 
                   <p
                     className="
-                    mt-2
-                    text-sm
-                    leading-6
-                    "
+                      mt-2
+                      text-sm
+                      leading-6
+                      "
                   >
                     {currentTask ? currentTask.title : "No active assignment"}
                   </p>
@@ -615,10 +1042,10 @@ export default function HQPage() {
                   {currentTask && (
                     <p
                       className="
-                      text-gray-600
-                      text-xs
-                      mt-2
-                      "
+                        text-gray-600
+                        text-xs
+                        mt-2
+                        "
                     >
                       {currentTask.progress}% complete
                     </p>
@@ -628,19 +1055,19 @@ export default function HQPage() {
                 <Link
                   href={`/agents/${agent.id}`}
                   className="
-                  inline-block
-                  mt-6
-                  px-5
-                  py-3
-                  bg-black
-                  border
-                  border-white/20
-                  rounded-xl
-                  text-sm
-                  hover:bg-white
-                  hover:text-black
-                  transition
-                  "
+                    inline-block
+                    mt-6
+                    px-5
+                    py-3
+                    bg-black
+                    border
+                    border-white/20
+                    rounded-xl
+                    text-sm
+                    hover:bg-white
+                    hover:text-black
+                    transition
+                    "
                 >
                   🚪 Enter Room
                 </Link>
