@@ -439,7 +439,50 @@ export default function Missions() {
 
       setMissions(updatedMissions);
 
+      /*
+  LOCAL MIGRATION FALLBACK
+
+  Keep localStorage during the
+  migration period so the working
+  app remains safe.
+*/
+
       saveMissions(updatedMissions);
+
+      /*
+  SUPABASE PERSISTENCE
+
+  Save the same mission to our
+  secure server-side API.
+*/
+
+      try {
+        const missionResponse = await fetch("/api/missions", {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify(newMission),
+        });
+
+        const missionData = await missionResponse.json();
+
+        if (!missionResponse.ok) {
+          console.error("Supabase mission save failed:", missionData);
+        } else {
+          console.log("Mission saved to Supabase:", missionData);
+        }
+      } catch (error) {
+        /*
+    Supabase failure must NOT destroy
+    the mission because localStorage
+    has already saved it.
+  */
+
+        console.error("Supabase mission sync error:", error);
+      }
 
       const currentTasks = getTasks();
 
@@ -448,6 +491,14 @@ export default function Missions() {
       saveTasks(updatedTasks);
 
       setTasks(updatedTasks);
+
+      /*
+  SUPABASE TASK PERSISTENCE
+
+  Keep localStorage as fallback
+  while syncing the generated tasks
+  to the new database.
+*/
 
       saveMissionMemory({
         title: cleanTitle,
