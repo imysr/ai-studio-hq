@@ -119,3 +119,63 @@ async function syncManagerMemoryToSupabase(memory: ManagerMemory) {
     console.error("Supabase manager memory synchronization error:", error);
   }
 }
+
+/*
+  LOAD MANAGER MEMORY FROM SUPABASE
+
+  Supabase is now the preferred
+  persistent source of Valid's
+  manager memory.
+
+  localStorage remains a temporary
+  cache during migration.
+*/
+
+export async function loadManagerMemoryFromSupabase(): Promise<ManagerMemory | null> {
+  try {
+    const response = await fetch("/api/manager-memory", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase manager memory load failed:", data);
+
+      return getManagerMemory();
+    }
+
+    const data = await response.json();
+
+    if (!data.memory) {
+      return getManagerMemory();
+    }
+
+    const memory: ManagerMemory = {
+      missionTitle: data.memory.mission_title,
+
+      analysis: data.memory.analysis,
+
+      decision: data.memory.decision,
+
+      createdAt: data.memory.created_at,
+
+      finalDeliverable: data.memory.final_deliverable ?? undefined,
+
+      finalDeliverableCreatedAt:
+        data.memory.final_deliverable_created_at ?? undefined,
+    };
+
+    /*
+      TEMPORARY LOCAL CACHE
+    */
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(memory));
+
+    return memory;
+  } catch (error) {
+    console.error("Supabase manager memory load error:", error);
+
+    return getManagerMemory();
+  }
+}

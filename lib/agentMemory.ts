@@ -50,6 +50,79 @@ export function saveAgentMemory(agentsMemory: AgentMemory[]) {
 }
 
 /*
+  LOAD AGENT MEMORY FROM SUPABASE
+
+  Supabase is now the preferred
+  persistent source of agent state.
+
+  localStorage remains a temporary
+  cache so the existing synchronous
+  work engine can continue using
+  getAgentMemory().
+*/
+
+export async function loadAgentMemoryFromSupabase(): Promise<AgentMemory[]> {
+  try {
+    const response = await fetch("/api/agent-memory", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase agent memory load failed:", data);
+
+      return getAgentMemory();
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data.agents)) {
+      return getAgentMemory();
+    }
+
+    const memories = data.agents.map(
+      (memory: {
+        agent_id: number;
+        current_task: string;
+        mission_status: string;
+        location: string;
+        energy: number;
+        last_action: string;
+      }): AgentMemory => ({
+        id: memory.agent_id,
+
+        currentTask: memory.current_task,
+
+        missionStatus: memory.mission_status,
+
+        location: memory.location,
+
+        energy: memory.energy ?? 100,
+
+        lastAction: memory.last_action,
+      }),
+    );
+
+    /*
+      TEMPORARY LOCAL CACHE
+
+      Existing synchronous systems
+      continue working while Supabase
+      becomes the persistent source.
+    */
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
+
+    return memories;
+  } catch (error) {
+    console.error("Supabase agent memory load error:", error);
+
+    return getAgentMemory();
+  }
+}
+
+/*
   GET AGENT MEMORY
 */
 

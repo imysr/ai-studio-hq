@@ -23,7 +23,6 @@ import {
 
 import { generateMissionTasks, type DelegatedTask } from "@/lib/taskGenerator";
 
-import { saveMissionMemory } from "@/lib/missionMemory";
 import { saveAgentMemory } from "@/lib/agentMemory";
 
 import { recordMissionAnalysis, createManagerReport } from "@/lib/aiManager";
@@ -522,34 +521,6 @@ export default function Missions() {
   secure server-side API.
 */
 
-      try {
-        const missionResponse = await fetch("/api/missions", {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify(newMission),
-        });
-
-        const missionData = await missionResponse.json();
-
-        if (!missionResponse.ok) {
-          console.error("Supabase mission save failed:", missionData);
-        } else {
-          console.log("Mission saved to Supabase:", missionData);
-        }
-      } catch (error) {
-        /*
-    Supabase failure must NOT destroy
-    the mission because localStorage
-    has already saved it.
-  */
-
-        console.error("Supabase mission sync error:", error);
-      }
-
       const currentTasks = getTasks();
 
       const updatedTasks = [...currentTasks, ...newTasks];
@@ -565,11 +536,6 @@ export default function Missions() {
   while syncing the generated tasks
   to the new database.
 */
-
-      saveMissionMemory({
-        title: cleanTitle,
-        description: cleanDescription,
-      });
 
       recordMissionAnalysis(newMission);
 

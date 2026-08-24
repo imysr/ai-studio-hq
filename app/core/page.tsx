@@ -5,10 +5,16 @@ import { useEffect, useState } from "react";
 
 import { agents } from "@/data/agents";
 
-import { getAgentMemory } from "@/lib/agentMemory";
+import { getAgentMemory, loadAgentMemoryFromSupabase } from "@/lib/agentMemory";
 import { runAIScheduler } from "@/lib/aiScheduler";
-import { getManagerMemory } from "@/lib/managerMemory";
-import { getActivities } from "@/lib/activityMemory";
+import {
+  getManagerMemory,
+  loadManagerMemoryFromSupabase,
+} from "@/lib/managerMemory";
+import {
+  getActivities,
+  loadActivitiesFromSupabase,
+} from "@/lib/activityMemory";
 
 type AgentMemory = {
   id: number;
@@ -55,15 +61,15 @@ export default function CorePage() {
     async function updateCore() {
       await runAIScheduler();
 
-      const agentData = getAgentMemory();
+      const agentData = await loadAgentMemoryFromSupabase();
 
       setMemory(agentData);
 
-      const managerData = getManagerMemory();
+      const managerData = await loadManagerMemoryFromSupabase();
 
       setManager(managerData);
 
-      const activityData = getActivities();
+      const activityData = await loadActivitiesFromSupabase();
 
       setActivities(activityData);
     }

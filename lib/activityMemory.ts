@@ -121,3 +121,64 @@ async function syncActivitiesToSupabase(activities: ActivityMemory[]) {
     console.error("Supabase activity synchronization error:", error);
   }
 }
+
+/*
+  LOAD ACTIVITIES FROM SUPABASE
+
+  Supabase is now the preferred
+  persistent source of activity logs.
+
+  localStorage remains a temporary
+  cache during migration.
+*/
+
+export async function loadActivitiesFromSupabase(): Promise<ActivityMemory[]> {
+  try {
+    const response = await fetch("/api/activity", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase activity load failed:", data);
+
+      return getActivities();
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data.activities)) {
+      return getActivities();
+    }
+
+    const activities = data.activities.map(
+      (activity: {
+        id: number;
+        time_text: string;
+        icon: string;
+        message: string;
+      }): ActivityMemory => ({
+        id: activity.id,
+
+        time: activity.time_text ?? "",
+
+        icon: activity.icon ?? "",
+
+        message: activity.message ?? "",
+      }),
+    );
+
+    /*
+      TEMPORARY LOCAL CACHE
+    */
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(activities));
+
+    return activities;
+  } catch (error) {
+    console.error("Supabase activity load error:", error);
+
+    return getActivities();
+  }
+}
