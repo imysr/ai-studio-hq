@@ -178,3 +178,80 @@ async function syncMissionsToSupabase(missions: Mission[]) {
     console.error("Supabase mission synchronization error:", error);
   }
 }
+
+/*
+  LOAD MISSIONS FROM SUPABASE
+
+  Supabase is becoming the primary
+  persistent source of mission data.
+
+  localStorage remains available as
+  a temporary fallback during migration.
+*/
+
+export async function loadMissionsFromSupabase(): Promise<Mission[]> {
+  try {
+    const response = await fetch("/api/missions", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase mission load failed:", data);
+
+      return getMissions();
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data.missions)) {
+      return getMissions();
+    }
+
+    const missions = data.missions.map(
+      (mission: {
+        id: number;
+        title: string;
+        description: string;
+        status: Mission["status"];
+        progress: number;
+        assigned_agents?: number[];
+        final_deliverable?: string | null;
+        final_deliverable_created_at?: string | null;
+      }): Mission => ({
+        id: mission.id,
+
+        title: mission.title,
+
+        description: mission.description,
+
+        status: mission.status,
+
+        progress: mission.progress ?? 0,
+
+        assignedAgents: mission.assigned_agents ?? [],
+
+        finalDeliverable: mission.final_deliverable ?? "",
+
+        finalDeliverableCreatedAt: mission.final_deliverable_created_at ?? "",
+      }),
+    );
+
+    /*
+      Temporary local cache.
+
+      This keeps the existing synchronous
+      mission engine working while reads
+      are migrated incrementally.
+    */
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(missions));
+
+    return missions;
+  } catch (error) {
+    console.error("Supabase mission load error:", error);
+
+    return getMissions();
+  }
+}

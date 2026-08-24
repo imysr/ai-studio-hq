@@ -103,3 +103,87 @@ async function syncTasksToSupabase(tasks: MissionTask[]) {
     console.error("Supabase task synchronization error:", error);
   }
 }
+
+/*
+  LOAD TASKS FROM SUPABASE
+
+  Supabase is now the preferred
+  persistent source of mission tasks.
+
+  localStorage remains available as
+  a temporary cache and fallback
+  while the migration is completed.
+*/
+
+export async function loadTasksFromSupabase(): Promise<MissionTask[]> {
+  try {
+    const response = await fetch("/api/tasks", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error("Supabase task load failed:", data);
+
+      return getTasks();
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data.tasks)) {
+      return getTasks();
+    }
+
+    const tasks = data.tasks.map(
+      (task: {
+        id: number;
+        mission_id: number;
+        title: string;
+        description: string;
+        assigned_agent: number;
+        status: MissionTask["status"];
+        progress: number;
+        result?: string | null;
+        depends_on?: number[];
+        context_from_tasks?: number[];
+      }): MissionTask => ({
+        id: task.id,
+
+        missionId: task.mission_id,
+
+        title: task.title,
+
+        description: task.description,
+
+        assignedAgent: task.assigned_agent,
+
+        status: task.status,
+
+        progress: task.progress ?? 0,
+
+        result: task.result ?? "",
+
+        dependsOn: task.depends_on ?? [],
+
+        contextFromTasks: task.context_from_tasks ?? [],
+      }),
+    );
+
+    /*
+      TEMPORARY LOCAL CACHE
+
+      Existing synchronous systems such
+      as taskEngine and workEngine can
+      continue calling getTasks().
+    */
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+
+    return tasks;
+  } catch (error) {
+    console.error("Supabase task load error:", error);
+
+    return getTasks();
+  }
+}

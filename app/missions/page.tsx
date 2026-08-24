@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { agents } from "@/data/agents";
 import { defaultMissions, type Mission } from "@/data/missions";
@@ -9,10 +9,13 @@ import type { MissionTask } from "@/data/tasks";
 
 import MissionCard from "@/app/missions/components/MissionCard";
 
-import { getMissions, saveMissions } from "@/lib/missionStorage";
+import {
+  getMissions,
+  saveMissions,
+  loadMissionsFromSupabase,
+} from "@/lib/missionStorage";
 
-import { saveTasks, getTasks } from "@/lib/taskStorage";
-
+import { saveTasks, getTasks, loadTasksFromSupabase } from "@/lib/taskStorage";
 import {
   calculateMissionProgress,
   calculateMissionStatus,
@@ -58,13 +61,76 @@ type FinalReviewResponse = {
 };
 
 export default function Missions() {
-  const [missions, setMissions] = useState<Mission[]>(() => {
-    const savedMissions = getMissions();
+  const [missions, setMissions] = useState<Mission[]>(defaultMissions);
 
-    return savedMissions.length > 0 ? savedMissions : defaultMissions;
-  });
+  /*
+  LOAD MISSIONS FROM SUPABASE
 
+  Supabase is now the preferred
+  persistent mission source.
+
+  localStorage remains a fallback
+  during the migration phase.
+*/
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMissionData() {
+      const supabaseMissions = await loadMissionsFromSupabase();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (supabaseMissions.length > 0) {
+        setMissions(supabaseMissions);
+
+        return;
+      }
+
+      const localMissions = getMissions();
+
+      setMissions(localMissions.length > 0 ? localMissions : defaultMissions);
+    }
+
+    void loadMissionData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /*
+  LOAD TASKS FROM SUPABASE
+
+  Supabase is now the preferred
+  persistent task source.
+
+  The returned tasks also refresh
+  the localStorage cache used by
+  taskEngine and workEngine.
+*/
   const [tasks, setTasks] = useState<MissionTask[]>(getTasks());
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTaskData() {
+      const supabaseTasks = await loadTasksFromSupabase();
+
+      if (cancelled) {
+        return;
+      }
+
+      setTasks(supabaseTasks);
+    }
+
+    void loadTaskData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [title, setTitle] = useState("");
 

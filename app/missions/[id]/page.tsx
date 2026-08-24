@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { agents } from "@/data/agents";
 import type { Mission } from "@/data/missions";
 import type { MissionTask } from "@/data/tasks";
 
 import { getMissions } from "@/lib/missionStorage";
-import { getTasks } from "@/lib/taskStorage";
+import { loadTasksFromSupabase } from "@/lib/taskStorage";
 
 import {
   calculateMissionProgress,
@@ -29,14 +29,31 @@ export default function MissionDetailPage() {
     return getMissions().find((item) => item.id === missionId) ?? null;
   });
 
-  const [tasks] = useState<MissionTask[]>(() => {
+  const [tasks, setTasks] = useState<MissionTask[]>([]);
+
+  useEffect(() => {
     if (!Number.isFinite(missionId)) {
-      return [];
+      return;
     }
 
-    return getTasks().filter((task) => task.missionId === missionId);
-  });
+    let cancelled = false;
 
+    async function loadMissionTasks() {
+      const loadedTasks = await loadTasksFromSupabase();
+
+      if (cancelled) {
+        return;
+      }
+
+      setTasks(loadedTasks.filter((task) => task.missionId === missionId));
+    }
+
+    void loadMissionTasks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [missionId]);
   if (!mission) {
     return (
       <main
