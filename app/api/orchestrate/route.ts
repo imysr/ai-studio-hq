@@ -94,6 +94,28 @@ export async function POST(request: Request) {
         ? body.missionDescription.trim()
         : "";
 
+    if (missionTitle.length > 200) {
+      return NextResponse.json(
+        {
+          error: "Mission title must be 200 characters or fewer.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (missionDescription.length > 5000) {
+      return NextResponse.json(
+        {
+          error: "Mission description must be 5000 characters or fewer.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
     if (!missionTitle) {
       return NextResponse.json(
         {

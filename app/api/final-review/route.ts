@@ -36,10 +36,10 @@ export async function POST(request: Request) {
       ? body.completedTasks
       : [];
 
-    if (!missionTitle) {
+    if (missionTitle.length === 0 || missionTitle.length > 200) {
       return NextResponse.json(
         {
-          error: "Mission title is required.",
+          error: "Mission title must be between 1 and 200 characters.",
         },
         {
           status: 400,
@@ -47,10 +47,21 @@ export async function POST(request: Request) {
       );
     }
 
-    if (completedTasks.length === 0) {
+    if (missionDescription.length > 5000) {
       return NextResponse.json(
         {
-          error: "At least one completed task result is required.",
+          error: "Mission description must be 5000 characters or fewer.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (completedTasks.length === 0 || completedTasks.length > 20) {
+      return NextResponse.json(
+        {
+          error: "Completed tasks must contain between 1 and 20 tasks.",
         },
         {
           status: 400,
@@ -75,9 +86,19 @@ export async function POST(request: Request) {
       .filter(
         (task) =>
           typeof task?.title === "string" &&
+          task.title.trim().length > 0 &&
+          task.title.trim().length <= 250 &&
+          typeof task?.description === "string" &&
+          task.description.length <= 10000 &&
+          Number.isInteger(task?.assignedAgent) &&
+          task.assignedAgent >= 1 &&
+          task.assignedAgent <= 6 &&
+          typeof task?.agentName === "string" &&
+          task.agentName.trim().length > 0 &&
+          task.agentName.trim().length <= 100 &&
           typeof task?.result === "string" &&
-          task.title.trim() !== "" &&
-          task.result.trim() !== "",
+          task.result.trim().length > 0 &&
+          task.result.length <= 50000,
       )
       .map((task) => ({
         title: task.title.trim(),

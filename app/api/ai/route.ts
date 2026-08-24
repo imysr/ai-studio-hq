@@ -8,10 +8,20 @@ export async function POST(request: Request) {
 
     const { agent, taskTitle, instructions } = body;
 
-    if (!agent || !taskTitle || !instructions) {
+    if (
+      typeof agent !== "string" ||
+      agent.trim().length === 0 ||
+      agent.length > 50 ||
+      typeof taskTitle !== "string" ||
+      taskTitle.trim().length === 0 ||
+      taskTitle.trim().length > 250 ||
+      typeof instructions !== "string" ||
+      instructions.trim().length === 0 ||
+      instructions.length > 10000
+    ) {
       return NextResponse.json(
         {
-          error: "Missing agent, task title, or instructions.",
+          error: "Invalid agent, task title, or instructions.",
         },
         {
           status: 400,

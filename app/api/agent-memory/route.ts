@@ -87,9 +87,22 @@ export async function POST(request: Request) {
 
     const validMemories = memories.filter(
       (memory) =>
-        typeof memory.id === "number" && memory.id >= 1 && memory.id <= 6,
+        Number.isInteger(memory?.id) &&
+        memory.id >= 1 &&
+        memory.id <= 6 &&
+        typeof memory?.currentTask === "string" &&
+        memory.currentTask.length <= 500 &&
+        typeof memory?.missionStatus === "string" &&
+        memory.missionStatus.length <= 100 &&
+        typeof memory?.location === "string" &&
+        memory.location.length <= 200 &&
+        typeof memory?.energy === "number" &&
+        Number.isFinite(memory.energy) &&
+        memory.energy >= 0 &&
+        memory.energy <= 100 &&
+        typeof memory?.lastAction === "string" &&
+        memory.lastAction.length <= 2000,
     );
-
     if (validMemories.length === 0) {
       return NextResponse.json(
         {

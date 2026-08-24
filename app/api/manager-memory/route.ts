@@ -85,7 +85,20 @@ export async function POST(request: Request) {
     if (
       !body ||
       typeof body.missionTitle !== "string" ||
-      !body.missionTitle.trim()
+      body.missionTitle.trim().length === 0 ||
+      body.missionTitle.trim().length > 200 ||
+      typeof body.analysis !== "string" ||
+      body.analysis.length > 10000 ||
+      typeof body.decision !== "string" ||
+      body.decision.length > 5000 ||
+      typeof body.createdAt !== "string" ||
+      Number.isNaN(new Date(body.createdAt).getTime()) ||
+      (body.finalDeliverable !== undefined &&
+        (typeof body.finalDeliverable !== "string" ||
+          body.finalDeliverable.length > 50000)) ||
+      (body.finalDeliverableCreatedAt !== undefined &&
+        (typeof body.finalDeliverableCreatedAt !== "string" ||
+          Number.isNaN(new Date(body.finalDeliverableCreatedAt).getTime())))
     ) {
       return NextResponse.json(
         {

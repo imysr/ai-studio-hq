@@ -100,12 +100,43 @@ export async function POST(request: Request) {
       BASIC VALIDATION
     */
 
+    const allowedStatuses = ["Pending", "Working", "Completed"] as const;
+
     const validTasks = tasks.filter(
       (task) =>
-        typeof task.id === "number" &&
-        typeof task.missionId === "number" &&
-        typeof task.title === "string" &&
-        task.title.trim() !== "",
+        Number.isInteger(task?.id) &&
+        task.id > 0 &&
+        Number.isInteger(task?.missionId) &&
+        task.missionId > 0 &&
+        typeof task?.title === "string" &&
+        task.title.trim().length > 0 &&
+        task.title.trim().length <= 250 &&
+        typeof task?.description === "string" &&
+        task.description.length <= 10000 &&
+        Number.isInteger(task?.assignedAgent) &&
+        task.assignedAgent >= 1 &&
+        task.assignedAgent <= 6 &&
+        typeof task?.status === "string" &&
+        allowedStatuses.includes(
+          task.status as (typeof allowedStatuses)[number],
+        ) &&
+        typeof task?.progress === "number" &&
+        Number.isFinite(task.progress) &&
+        task.progress >= 0 &&
+        task.progress <= 100 &&
+        (task.result === undefined ||
+          (typeof task.result === "string" && task.result.length <= 50000)) &&
+        (task.dependsOn === undefined ||
+          (Array.isArray(task.dependsOn) &&
+            task.dependsOn.every(
+              (dependencyId) =>
+                Number.isInteger(dependencyId) && dependencyId > 0,
+            ))) &&
+        (task.contextFromTasks === undefined ||
+          (Array.isArray(task.contextFromTasks) &&
+            task.contextFromTasks.every(
+              (contextId) => Number.isInteger(contextId) && contextId > 0,
+            ))),
     );
 
     if (validTasks.length === 0) {

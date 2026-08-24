@@ -89,11 +89,30 @@ export async function POST(request: Request) {
       VALIDATION
     */
 
+    const allowedStatuses = ["Planning", "Active", "Completed"] as const;
+
     const validMissions = missions.filter(
       (mission) =>
-        typeof mission?.id === "number" &&
+        Number.isInteger(mission?.id) &&
+        mission.id > 0 &&
         typeof mission?.title === "string" &&
-        mission.title.trim() !== "",
+        mission.title.trim().length > 0 &&
+        mission.title.trim().length <= 200 &&
+        typeof mission?.description === "string" &&
+        mission.description.length <= 5000 &&
+        typeof mission?.status === "string" &&
+        allowedStatuses.includes(
+          mission.status as (typeof allowedStatuses)[number],
+        ) &&
+        typeof mission?.progress === "number" &&
+        Number.isFinite(mission.progress) &&
+        mission.progress >= 0 &&
+        mission.progress <= 100 &&
+        Array.isArray(mission?.assignedAgents) &&
+        mission.assignedAgents.every(
+          (agentId) =>
+            Number.isInteger(agentId) && agentId >= 1 && agentId <= 6,
+        ),
     );
 
     if (validMissions.length === 0) {

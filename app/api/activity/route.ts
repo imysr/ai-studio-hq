@@ -77,9 +77,15 @@ export async function POST(request: Request) {
 
     const validActivities = activities.filter(
       (activity) =>
-        typeof activity?.id === "number" &&
+        Number.isInteger(activity?.id) &&
+        activity.id > 0 &&
+        typeof activity?.time === "string" &&
+        activity.time.length <= 100 &&
+        typeof activity?.icon === "string" &&
+        activity.icon.length <= 20 &&
         typeof activity?.message === "string" &&
-        activity.message.trim() !== "",
+        activity.message.trim().length > 0 &&
+        activity.message.trim().length <= 5000,
     );
 
     if (validActivities.length === 0) {
