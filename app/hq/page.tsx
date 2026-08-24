@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { agents } from "@/data/agents";
 import type { MissionTask } from "@/data/tasks";
 
-import { getTasks } from "@/lib/taskStorage";
+import { getTasks, loadTasksFromSupabase } from "@/lib/taskStorage";
 
 import { getAIRequestState, type AIRequestState } from "@/lib/aiRequestManager";
 
@@ -220,17 +220,33 @@ export default function HQPage() {
   */
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function initializeHQ() {
+      const supabaseTasks = await loadTasksFromSupabase();
+
+      if (cancelled) {
+        return;
+      }
+
+      setTasks(supabaseTasks);
+
+      setAIRequestState(getAIRequestState());
+    }
+
+    void initializeHQ();
+
     const syncHQ = () => {
       setTasks(getTasks());
 
       setAIRequestState(getAIRequestState());
     };
 
-    syncHQ();
-
     const interval = window.setInterval(syncHQ, 1000);
 
     return () => {
+      cancelled = true;
+
       window.clearInterval(interval);
     };
   }, []);
