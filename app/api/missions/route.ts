@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isApiOwnerAuthenticated } from "@/lib/auth/apiOwner";
 
 type MissionInput = {
   id: number;
@@ -28,6 +29,18 @@ type MissionInput = {
 
 export async function GET() {
   try {
+    const authenticated = await isApiOwnerAuthenticated();
+
+    if (!authenticated) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized.",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
     const { data, error } = await supabaseServer
       .from("missions")
       .select("*")
@@ -81,6 +94,18 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const authenticated = await isApiOwnerAuthenticated();
+
+    if (!authenticated) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized.",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
     const body = await request.json();
 
     const missions: MissionInput[] = Array.isArray(body) ? body : [body];
