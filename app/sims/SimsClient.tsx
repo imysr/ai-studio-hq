@@ -768,7 +768,7 @@ function AgentSim({
 
           ${compact ? "text-3xl" : "text-5xl"}
 
-          ${travelling ? "animate-pulse translate-x-2" : ""}
+          ${travelling ? "hq-walking" : ""}
 
           ${working && !compact && !travelling ? "scale-110" : ""}
         `}
