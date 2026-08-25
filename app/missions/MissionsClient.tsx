@@ -37,6 +37,8 @@ import {
   markAIRequestFailed,
 } from "@/lib/aiRequestManager";
 
+import { runAIScheduler } from "@/lib/aiScheduler";
+
 type AgentMemory = {
   id: number;
   currentTask: string;
@@ -529,6 +531,7 @@ export default function MissionsClient() {
 
       setTasks(updatedTasks);
 
+      void runAIScheduler();
       /*
   SUPABASE TASK PERSISTENCE
 
