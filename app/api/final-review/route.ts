@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isApiOwnerAuthenticated } from "@/lib/auth/apiOwner";
+import { checkAIServerRateLimit } from "@/lib/aiServerRateLimit";
 
 type CompletedTaskInput = {
   title: string;
@@ -21,6 +22,24 @@ function wait(ms: number) {
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = checkAIServerRateLimit();
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "AI request rate limit reached. Please try again shortly.",
+
+          retryAfterSeconds: rateLimit.retryAfterSeconds,
+        },
+        {
+          status: 429,
+
+          headers: {
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        },
+      );
+    }
     const authenticated = await isApiOwnerAuthenticated();
 
     if (!authenticated) {
