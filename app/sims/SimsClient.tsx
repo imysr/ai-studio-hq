@@ -7,12 +7,128 @@ import { agents } from "@/data/agents";
 
 type LiveAgentMemory = {
   id: number;
+
   currentTask: string;
+
   missionStatus: string;
+
   location: string;
+
   energy: number;
+
   lastAction: string;
 };
+
+type VirtualRoom =
+  | "CEO Office"
+  | "AI Core"
+  | "Business Room"
+  | "Development Lab"
+  | "Main Hallway"
+  | "Design Studio"
+  | "Learning Academy"
+  | "Lounge"
+  | "Game Studio";
+
+/*
+  HOME ROOM
+
+  When Agent Memory says "Office",
+  the employee returns to their
+  own department.
+*/
+
+const homeRooms: Record<number, VirtualRoom> = {
+  1: "CEO Office",
+
+  2: "Development Lab",
+
+  3: "Design Studio",
+
+  4: "Learning Academy",
+
+  5: "Business Room",
+
+  6: "Game Studio",
+};
+
+/*
+  MAP REAL AGENT MEMORY LOCATION
+  TO THE VISUAL HQ FLOOR.
+*/
+
+function resolveVirtualLocation(memory: LiveAgentMemory): VirtualRoom {
+  const location = memory.location?.trim() || "Office";
+
+  /*
+    Generic Office means:
+    return to that employee's own room.
+  */
+
+  if (location === "Office") {
+    return homeRooms[memory.id] ?? "Main Hallway";
+  }
+
+  /*
+    Company meeting.
+  */
+
+  if (location === "AI Core Meeting Room") {
+    return "AI Core";
+  }
+
+  /*
+    Atlas currently uses
+    "Strategy Room" in workEngine.
+  */
+
+  if (location === "Strategy Room") {
+    return "Business Room";
+  }
+
+  /*
+    Existing workEngine locations.
+  */
+
+  if (location === "CEO Office") {
+    return "CEO Office";
+  }
+
+  if (location === "Development Lab") {
+    return "Development Lab";
+  }
+
+  if (location === "Design Studio") {
+    return "Design Studio";
+  }
+
+  if (location === "Learning Academy") {
+    return "Learning Academy";
+  }
+
+  if (location === "Game Studio") {
+    return "Game Studio";
+  }
+
+  /*
+    Sims locations.
+  */
+
+  if (location === "Hallway" || location === "Main Hallway") {
+    return "Main Hallway";
+  }
+
+  if (location === "Lounge") {
+    return "Lounge";
+  }
+
+  /*
+    Unknown location:
+    safely return home.
+  */
+
+  return homeRooms[memory.id] ?? "Main Hallway";
+}
 
 export default function SimsClient() {
   const [liveMemory, setLiveMemory] = useState<LiveAgentMemory[]>([]);
@@ -24,9 +140,13 @@ export default function SimsClient() {
       try {
         const response = await fetch("/api/agent-memory", {
           method: "GET",
+
+          cache: "no-store",
         });
 
         if (!response.ok) {
+          console.error("Sims Agent Memory request failed:", response.status);
+
           return;
         }
 
@@ -39,10 +159,15 @@ export default function SimsClient() {
         const memories = data.agents.map(
           (memory: {
             agent_id: number;
+
             current_task: string;
+
             mission_status: string;
+
             location: string;
+
             energy: number;
+
             last_action: string;
           }): LiveAgentMemory => ({
             id: memory.agent_id,
@@ -76,18 +201,67 @@ export default function SimsClient() {
     };
   }, []);
 
+  function getAgentsInRoom(room: VirtualRoom) {
+    return liveMemory.filter(
+      (memory) => resolveVirtualLocation(memory) === room,
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-black text-white p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between gap-6 flex-wrap mb-8">
+    <main
+      className="
+        min-h-screen
+        bg-black
+        text-white
+        p-6
+      "
+    >
+      <div
+        className="
+          max-w-7xl
+          mx-auto
+        "
+      >
+        {/* HEADER */}
+
+        <div
+          className="
+            flex
+            items-center
+            justify-between
+            gap-6
+            flex-wrap
+            mb-8
+          "
+        >
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-600">
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-[0.3em]
+                text-gray-600
+              "
+            >
               AI Studio Simulation
             </p>
 
-            <h1 className="text-5xl font-bold mt-2">🏢 Virtual HQ</h1>
+            <h1
+              className="
+                text-5xl
+                font-bold
+                mt-2
+              "
+            >
+              🏢 Virtual HQ
+            </h1>
 
-            <p className="text-gray-500 mt-2">
+            <p
+              className="
+                text-gray-500
+                mt-2
+              "
+            >
               Live floor simulation of AI Studio HQ.
             </p>
           </div>
@@ -111,6 +285,8 @@ export default function SimsClient() {
           </Link>
         </div>
 
+        {/* FLOOR */}
+
         <section
           className="
             bg-[#050505]
@@ -128,45 +304,54 @@ export default function SimsClient() {
               min-h-[780px]
             "
           >
-            {/* TOP ROW */}
+            {/* TOP */}
 
             <Room
-              title="CEO Office"
-              subtitle="Valid"
-              agentId={1}
-              liveMemory={liveMemory}
-              className="col-span-4 row-span-2"
+              room="CEO Office"
+              subtitle="Executive Office"
+              occupants={getAgentsInRoom("CEO Office")}
+              className="
+                col-span-4
+                row-span-2
+              "
             />
 
             <Room
-              title="AI Core"
+              room="AI Core"
               subtitle="Central Meeting Room"
-              liveMemory={liveMemory}
-              className="col-span-4 row-span-2"
+              occupants={getAgentsInRoom("AI Core")}
+              className="
+                col-span-4
+                row-span-2
+              "
             />
 
             <Room
-              title="Business Room"
-              subtitle="Atlas"
-              agentId={5}
-              liveMemory={liveMemory}
-              className="col-span-4 row-span-2"
+              room="Business Room"
+              subtitle="Strategy Department"
+              occupants={getAgentsInRoom("Business Room")}
+              className="
+                col-span-4
+                row-span-2
+              "
             />
 
-            {/* MIDDLE ROW */}
+            {/* MIDDLE */}
 
             <Room
-              title="Development Lab"
-              subtitle="CodeBot"
-              agentId={2}
-              liveMemory={liveMemory}
-              className="col-span-3 row-span-3"
+              room="Development Lab"
+              subtitle="Engineering Department"
+              occupants={getAgentsInRoom("Development Lab")}
+              className="
+                col-span-3
+                row-span-3
+              "
             />
 
             <Room
-              title="Main Hallway"
+              room="Main Hallway"
               subtitle="Agent Movement Zone"
-              liveMemory={liveMemory}
+              occupants={getAgentsInRoom("Main Hallway")}
               className="
                 col-span-6
                 row-span-3
@@ -175,69 +360,83 @@ export default function SimsClient() {
             />
 
             <Room
-              title="Design Studio"
-              subtitle="Pixel"
-              agentId={3}
-              liveMemory={liveMemory}
-              className="col-span-3 row-span-3"
+              room="Design Studio"
+              subtitle="Creative Department"
+              occupants={getAgentsInRoom("Design Studio")}
+              className="
+                col-span-3
+                row-span-3
+              "
             />
 
-            {/* BOTTOM ROW */}
+            {/* BOTTOM */}
 
             <Room
-              title="Learning Academy"
-              subtitle="Sage"
-              agentId={4}
-              liveMemory={liveMemory}
-              className="col-span-4 row-span-2"
+              room="Learning Academy"
+              subtitle="Education Department"
+              occupants={getAgentsInRoom("Learning Academy")}
+              className="
+                col-span-4
+                row-span-2
+              "
             />
 
             <Room
-              title="Lounge"
+              room="Lounge"
               subtitle="Idle / Waiting Area"
-              liveMemory={liveMemory}
-              className="col-span-4 row-span-2"
+              occupants={getAgentsInRoom("Lounge")}
+              className="
+                col-span-4
+                row-span-2
+              "
             />
 
             <Room
-              title="Game Studio"
-              subtitle="Forge"
-              agentId={6}
-              liveMemory={liveMemory}
-              className="col-span-4 row-span-2"
+              room="Game Studio"
+              subtitle="Game Development"
+              occupants={getAgentsInRoom("Game Studio")}
+              className="
+                col-span-4
+                row-span-2
+              "
             />
           </div>
         </section>
+
+        {/* LIVE LEGEND */}
+
+        <div
+          className="
+            mt-5
+            flex
+            gap-4
+            flex-wrap
+            text-xs
+            text-gray-600
+          "
+        >
+          <span>● {liveMemory.length} AI employees online</span>
+
+          <span>● Live update every 3 seconds</span>
+
+          <span>● Position based on Agent Memory</span>
+        </div>
       </div>
     </main>
   );
 }
 
 type RoomProps = {
-  title: string;
+  room: VirtualRoom;
+
   subtitle: string;
-  agentId?: number;
-  liveMemory: LiveAgentMemory[];
+
+  occupants: LiveAgentMemory[];
+
   className?: string;
 };
 
-function Room({
-  title,
-  subtitle,
-  agentId,
-  liveMemory,
-  className = "",
-}: RoomProps) {
-  const agent =
-    agentId !== undefined
-      ? agents.find((item) => item.id === agentId)
-      : undefined;
-
-  const sim =
-    agentId !== undefined
-      ? liveMemory.find((item) => item.id === agentId)
-      : undefined;
-
+function Room({ room, subtitle, occupants, className = "" }: RoomProps) {
   return (
     <div
       className={`
@@ -251,6 +450,8 @@ function Room({
         ${className}
       `}
     >
+      {/* ROOM LABEL */}
+
       <p
         className="
           text-xs
@@ -262,17 +463,42 @@ function Room({
         {subtitle}
       </p>
 
-      <h2
+      <div
         className="
-          text-xl
-          font-bold
-          mt-1
+          flex
+          items-center
+          justify-between
+          gap-3
           relative
           z-20
         "
       >
-        {title}
-      </h2>
+        <h2
+          className="
+            text-xl
+            font-bold
+            mt-1
+          "
+        >
+          {room}
+        </h2>
+
+        {occupants.length > 0 && (
+          <span
+            className="
+              text-[10px]
+              text-gray-500
+              border
+              border-white/10
+              rounded-full
+              px-2
+              py-1
+            "
+          >
+            {occupants.length} inside
+          </span>
+        )}
+      </div>
 
       {/* ROOM FLOOR */}
 
@@ -288,9 +514,9 @@ function Room({
         "
       />
 
-      {/* AGENT */}
+      {/* EMPTY */}
 
-      {agent && sim && (
+      {occupants.length === 0 && (
         <div
           className="
             absolute
@@ -299,121 +525,230 @@ function Room({
             items-center
             justify-center
             pointer-events-none
-            z-10
           "
         >
-          <div className="text-center">
-            <div className="text-5xl">{agent.emoji}</div>
-
-            <p
-              className="
-                font-bold
-                text-lg
-                mt-2
-              "
-            >
-              {agent.name}
-            </p>
-
-            <p
-              className="
-                text-xs
-                text-blue-400
-                mt-1
-              "
-            >
-              {agent.role}
-            </p>
-
-            <div
-              className="
-                inline-flex
-                mt-3
-                px-3
-                py-1
-                rounded-full
-                border
-                border-white/10
-                bg-black/70
-                text-[10px]
-                text-gray-400
-              "
-            >
-              {sim.missionStatus}
-            </div>
-
-            <p
-              className="
-                text-[10px]
-                text-gray-600
-                mt-3
-                max-w-[180px]
-              "
-            >
-              {sim.currentTask}
-            </p>
-
-            <p
-              className="
-                text-[9px]
-                text-gray-700
-                mt-2
-                max-w-[190px]
-              "
-            >
-              {sim.lastAction}
-            </p>
-          </div>
+          <p
+            className="
+              text-xs
+              text-gray-800
+            "
+          >
+            Empty
+          </p>
         </div>
+      )}
+
+      {/* AGENTS */}
+
+      {occupants.length > 0 && (
+        <div
+          className={`
+            absolute
+            inset-x-4
+            top-16
+            bottom-4
+            z-10
+            grid
+            items-center
+            justify-items-center
+            gap-2
+
+            ${
+              occupants.length === 1
+                ? "grid-cols-1"
+                : occupants.length === 2
+                  ? "grid-cols-2"
+                  : occupants.length <= 4
+                    ? "grid-cols-2"
+                    : "grid-cols-3"
+            }
+          `}
+        >
+          {occupants.map((memory) => {
+            const agent = agents.find((item) => item.id === memory.id);
+
+            if (!agent) {
+              return null;
+            }
+
+            return (
+              <AgentSim
+                key={memory.id}
+                memory={memory}
+                name={agent.name}
+                emoji={agent.emoji}
+                role={agent.role}
+                compact={occupants.length > 1}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type AgentSimProps = {
+  memory: LiveAgentMemory;
+
+  name: string;
+
+  emoji: string;
+
+  role: string;
+
+  compact?: boolean;
+};
+
+function AgentSim({
+  memory,
+  name,
+  emoji,
+  role,
+  compact = false,
+}: AgentSimProps) {
+  const working =
+    memory.missionStatus === "Working" || memory.missionStatus === "Generating";
+
+  const waiting = memory.missionStatus === "Waiting";
+
+  return (
+    <div
+      className="
+        w-full
+        max-w-[130px]
+        text-center
+        relative
+      "
+    >
+      {/* STATUS DOT */}
+
+      <div
+        className={`
+          absolute
+          top-0
+          right-4
+          w-2.5
+          h-2.5
+          rounded-full
+
+          ${
+            working ? "bg-green-400" : waiting ? "bg-yellow-400" : "bg-gray-500"
+          }
+        `}
+      />
+
+      {/* CHARACTER */}
+
+      <div
+        className={`
+          transition
+          duration-300
+
+          ${compact ? "text-3xl" : "text-5xl"}
+
+          ${working && !compact ? "scale-110" : ""}
+        `}
+      >
+        {emoji}
+      </div>
+
+      <p
+        className={`
+          font-bold
+          mt-2
+
+          ${compact ? "text-sm" : "text-base"}
+        `}
+      >
+        {name}
+      </p>
+
+      <p
+        className="
+          text-[9px]
+          text-blue-400
+          mt-1
+        "
+      >
+        {role}
+      </p>
+
+      {/* STATUS */}
+
+      <div
+        className="
+          inline-flex
+          mt-2
+          px-2
+          py-1
+          rounded-full
+          border
+          border-white/10
+          bg-black/80
+          text-[8px]
+          text-gray-400
+        "
+      >
+        {memory.missionStatus}
+      </div>
+
+      {/* TASK */}
+
+      {!compact && (
+        <p
+          className="
+            text-[9px]
+            text-gray-600
+            mt-2
+            line-clamp-2
+          "
+        >
+          {memory.currentTask}
+        </p>
       )}
 
       {/* ENERGY */}
 
-      {sim && (
+      <div
+        className="
+          mt-3
+        "
+      >
         <div
           className="
-            absolute
-            left-5
-            right-5
-            bottom-4
-            z-20
+            flex
+            justify-between
+            text-[8px]
+            text-gray-700
+            mb-1
+          "
+        >
+          <span>Energy</span>
+
+          <span>{memory.energy}%</span>
+        </div>
+
+        <div
+          className="
+            h-1
+            bg-white/5
+            rounded-full
+            overflow-hidden
           "
         >
           <div
             className="
-              flex
-              justify-between
-              text-[10px]
-              text-gray-600
-              mb-1
-            "
-          >
-            <span>{sim.location}</span>
-
-            <span>Energy {sim.energy}%</span>
-          </div>
-
-          <div
-            className="
-              h-1
-              bg-white/5
+              h-full
+              bg-white/40
               rounded-full
-              overflow-hidden
             "
-          >
-            <div
-              className="
-                h-full
-                bg-white/40
-                rounded-full
-              "
-              style={{
-                width: `${Math.max(0, Math.min(100, sim.energy))}%`,
-              }}
-            />
-          </div>
+            style={{
+              width: `${Math.max(0, Math.min(100, memory.energy))}%`,
+            }}
+          />
         </div>
-      )}
+      </div>
     </div>
   );
 }
