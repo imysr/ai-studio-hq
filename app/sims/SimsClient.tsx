@@ -1,21 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { agents } from "@/data/agents";
 
 type LiveAgentMemory = {
   id: number;
-
   currentTask: string;
-
   missionStatus: string;
-
   location: string;
-
   energy: number;
-
   lastAction: string;
 };
 
@@ -30,65 +25,31 @@ type VirtualRoom =
   | "Lounge"
   | "Game Studio";
 
-/*
-  HOME ROOM
-
-  When Agent Memory says "Office",
-  the employee returns to their
-  own department.
-*/
+type DisplayLocationMap = Record<number, VirtualRoom>;
 
 const homeRooms: Record<number, VirtualRoom> = {
   1: "CEO Office",
-
   2: "Development Lab",
-
   3: "Design Studio",
-
   4: "Learning Academy",
-
   5: "Business Room",
-
   6: "Game Studio",
 };
 
-/*
-  MAP REAL AGENT MEMORY LOCATION
-  TO THE VISUAL HQ FLOOR.
-*/
-
 function resolveVirtualLocation(memory: LiveAgentMemory): VirtualRoom {
   const location = memory.location?.trim() || "Office";
-
-  /*
-    Generic Office means:
-    return to that employee's own room.
-  */
 
   if (location === "Office") {
     return homeRooms[memory.id] ?? "Main Hallway";
   }
 
-  /*
-    Company meeting.
-  */
-
   if (location === "AI Core Meeting Room") {
     return "AI Core";
   }
 
-  /*
-    Atlas currently uses
-    "Strategy Room" in workEngine.
-  */
-
   if (location === "Strategy Room") {
     return "Business Room";
   }
-
-  /*
-    Existing workEngine locations.
-  */
 
   if (location === "CEO Office") {
     return "CEO Office";
@@ -110,10 +71,6 @@ function resolveVirtualLocation(memory: LiveAgentMemory): VirtualRoom {
     return "Game Studio";
   }
 
-  /*
-    Sims locations.
-  */
-
   if (location === "Hallway" || location === "Main Hallway") {
     return "Main Hallway";
   }
@@ -122,16 +79,52 @@ function resolveVirtualLocation(memory: LiveAgentMemory): VirtualRoom {
     return "Lounge";
   }
 
-  /*
-    Unknown location:
-    safely return home.
-  */
-
   return homeRooms[memory.id] ?? "Main Hallway";
 }
 
 export default function SimsClient() {
   const [liveMemory, setLiveMemory] = useState<LiveAgentMemory[]>([]);
+
+  /*
+    displayLocations controls where
+    characters are visually rendered.
+
+    Supabase remains the real source
+    of truth.
+  */
+
+  const [displayLocations, setDisplayLocations] = useState<DisplayLocationMap>(
+    {},
+  );
+
+  /*
+    travellingAgents lets the UI know
+    which employees are currently
+    walking through the hallway.
+  */
+
+  const [travellingAgents, setTravellingAgents] = useState<number[]>([]);
+
+  /*
+    Keeps track of the latest resolved
+    real room for every agent.
+  */
+
+  const previousLocations = useRef<DisplayLocationMap>({});
+
+  /*
+    Prevent overlapping movement
+    animations for the same employee.
+  */
+
+  const activeTransitions = useRef<Set<number>>(new Set());
+
+  /*
+    Timers are stored so they can be
+    cleaned up if the page unmounts.
+  */
+
+  const transitionTimers = useRef<number[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,7 +133,6 @@ export default function SimsClient() {
       try {
         const response = await fetch("/api/agent-memory", {
           method: "GET",
-
           cache: "no-store",
         });
 
@@ -159,15 +151,10 @@ export default function SimsClient() {
         const memories = data.agents.map(
           (memory: {
             agent_id: number;
-
             current_task: string;
-
             mission_status: string;
-
             location: string;
-
             energy: number;
-
             last_action: string;
           }): LiveAgentMemory => ({
             id: memory.agent_id,
@@ -185,6 +172,107 @@ export default function SimsClient() {
         );
 
         setLiveMemory(memories);
+
+        /*
+          Process each agent's real
+          location against the previous
+          known location.
+        */
+
+        memories.forEach((memory: LiveAgentMemory) => {
+          const targetRoom = resolveVirtualLocation(memory);
+
+          const previousRoom = previousLocations.current[memory.id];
+
+          /*
+              First load:
+              place the employee directly
+              into the real room.
+
+              We don't animate initial
+              page hydration.
+            */
+
+          if (!previousRoom) {
+            previousLocations.current[memory.id] = targetRoom;
+
+            setDisplayLocations((current) => ({
+              ...current,
+
+              [memory.id]: targetRoom,
+            }));
+
+            return;
+          }
+
+          /*
+              Nothing changed.
+            */
+
+          if (previousRoom === targetRoom) {
+            return;
+          }
+
+          /*
+              Remember the newest real
+              destination immediately.
+
+              This prevents the same
+              change from being detected
+              every 3 seconds.
+            */
+
+          previousLocations.current[memory.id] = targetRoom;
+
+          /*
+              If an animation is already
+              running, don't start another
+              overlapping transition.
+            */
+
+          if (activeTransitions.current.has(memory.id)) {
+            return;
+          }
+
+          activeTransitions.current.add(memory.id);
+
+          /*
+              STEP 1:
+              move character into hallway.
+            */
+
+          setDisplayLocations((current) => ({
+            ...current,
+
+            [memory.id]: "Main Hallway",
+          }));
+
+          setTravellingAgents((current) =>
+            current.includes(memory.id) ? current : [...current, memory.id],
+          );
+
+          /*
+              STEP 2:
+              after two seconds,
+              enter destination room.
+            */
+
+          const timer = window.setTimeout(() => {
+            setDisplayLocations((current) => ({
+              ...current,
+
+              [memory.id]: targetRoom,
+            }));
+
+            setTravellingAgents((current) =>
+              current.filter((id) => id !== memory.id),
+            );
+
+            activeTransitions.current.delete(memory.id);
+          }, 3500);
+
+          transitionTimers.current.push(timer);
+        });
       } catch (error) {
         console.error("Failed to load Sims agent memory:", error);
       }
@@ -198,13 +286,25 @@ export default function SimsClient() {
       cancelled = true;
 
       window.clearInterval(interval);
+
+      transitionTimers.current.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+
+      transitionTimers.current = [];
     };
   }, []);
 
   function getAgentsInRoom(room: VirtualRoom) {
-    return liveMemory.filter(
-      (memory) => resolveVirtualLocation(memory) === room,
-    );
+    return liveMemory.filter((memory) => {
+      const displayRoom = displayLocations[memory.id];
+
+      return displayRoom === room;
+    });
+  }
+
+  function isTravelling(agentId: number) {
+    return travellingAgents.includes(agentId);
   }
 
   return (
@@ -304,12 +404,11 @@ export default function SimsClient() {
               min-h-[780px]
             "
           >
-            {/* TOP */}
-
             <Room
               room="CEO Office"
               subtitle="Executive Office"
               occupants={getAgentsInRoom("CEO Office")}
+              isTravelling={isTravelling}
               className="
                 col-span-4
                 row-span-2
@@ -320,6 +419,7 @@ export default function SimsClient() {
               room="AI Core"
               subtitle="Central Meeting Room"
               occupants={getAgentsInRoom("AI Core")}
+              isTravelling={isTravelling}
               className="
                 col-span-4
                 row-span-2
@@ -330,18 +430,18 @@ export default function SimsClient() {
               room="Business Room"
               subtitle="Strategy Department"
               occupants={getAgentsInRoom("Business Room")}
+              isTravelling={isTravelling}
               className="
                 col-span-4
                 row-span-2
               "
             />
 
-            {/* MIDDLE */}
-
             <Room
               room="Development Lab"
               subtitle="Engineering Department"
               occupants={getAgentsInRoom("Development Lab")}
+              isTravelling={isTravelling}
               className="
                 col-span-3
                 row-span-3
@@ -352,6 +452,7 @@ export default function SimsClient() {
               room="Main Hallway"
               subtitle="Agent Movement Zone"
               occupants={getAgentsInRoom("Main Hallway")}
+              isTravelling={isTravelling}
               className="
                 col-span-6
                 row-span-3
@@ -363,18 +464,18 @@ export default function SimsClient() {
               room="Design Studio"
               subtitle="Creative Department"
               occupants={getAgentsInRoom("Design Studio")}
+              isTravelling={isTravelling}
               className="
                 col-span-3
                 row-span-3
               "
             />
 
-            {/* BOTTOM */}
-
             <Room
               room="Learning Academy"
               subtitle="Education Department"
               occupants={getAgentsInRoom("Learning Academy")}
+              isTravelling={isTravelling}
               className="
                 col-span-4
                 row-span-2
@@ -385,6 +486,7 @@ export default function SimsClient() {
               room="Lounge"
               subtitle="Idle / Waiting Area"
               occupants={getAgentsInRoom("Lounge")}
+              isTravelling={isTravelling}
               className="
                 col-span-4
                 row-span-2
@@ -395,6 +497,7 @@ export default function SimsClient() {
               room="Game Studio"
               subtitle="Game Development"
               occupants={getAgentsInRoom("Game Studio")}
+              isTravelling={isTravelling}
               className="
                 col-span-4
                 row-span-2
@@ -420,6 +523,8 @@ export default function SimsClient() {
           <span>● Live update every 3 seconds</span>
 
           <span>● Position based on Agent Memory</span>
+
+          <span>● {travellingAgents.length} travelling</span>
         </div>
       </div>
     </main>
@@ -433,10 +538,18 @@ type RoomProps = {
 
   occupants: LiveAgentMemory[];
 
+  isTravelling: (agentId: number) => boolean;
+
   className?: string;
 };
 
-function Room({ room, subtitle, occupants, className = "" }: RoomProps) {
+function Room({
+  room,
+  subtitle,
+  occupants,
+  isTravelling,
+  className = "",
+}: RoomProps) {
   return (
     <div
       className={`
@@ -450,8 +563,6 @@ function Room({ room, subtitle, occupants, className = "" }: RoomProps) {
         ${className}
       `}
     >
-      {/* ROOM LABEL */}
-
       <p
         className="
           text-xs
@@ -514,7 +625,7 @@ function Room({ room, subtitle, occupants, className = "" }: RoomProps) {
         "
       />
 
-      {/* EMPTY */}
+      {/* EMPTY ROOM */}
 
       {occupants.length === 0 && (
         <div
@@ -579,6 +690,7 @@ function Room({ room, subtitle, occupants, className = "" }: RoomProps) {
                 emoji={agent.emoji}
                 role={agent.role}
                 compact={occupants.length > 1}
+                travelling={isTravelling(memory.id)}
               />
             );
           })}
@@ -598,6 +710,8 @@ type AgentSimProps = {
   role: string;
 
   compact?: boolean;
+
+  travelling?: boolean;
 };
 
 function AgentSim({
@@ -606,6 +720,7 @@ function AgentSim({
   emoji,
   role,
   compact = false,
+  travelling = false,
 }: AgentSimProps) {
   const working =
     memory.missionStatus === "Working" || memory.missionStatus === "Generating";
@@ -633,7 +748,13 @@ function AgentSim({
           rounded-full
 
           ${
-            working ? "bg-green-400" : waiting ? "bg-yellow-400" : "bg-gray-500"
+            travelling
+              ? "bg-blue-400"
+              : working
+                ? "bg-green-400"
+                : waiting
+                  ? "bg-yellow-400"
+                  : "bg-gray-500"
           }
         `}
       />
@@ -642,12 +763,14 @@ function AgentSim({
 
       <div
         className={`
-          transition
-          duration-300
+          transition-all
+          duration-700
 
           ${compact ? "text-3xl" : "text-5xl"}
 
-          ${working && !compact ? "scale-110" : ""}
+          ${travelling ? "animate-pulse translate-x-2" : ""}
+
+          ${working && !compact && !travelling ? "scale-110" : ""}
         `}
       >
         {emoji}
@@ -690,12 +813,12 @@ function AgentSim({
           text-gray-400
         "
       >
-        {memory.missionStatus}
+        {travelling ? "Walking..." : memory.missionStatus}
       </div>
 
       {/* TASK */}
 
-      {!compact && (
+      {!compact && !travelling && (
         <p
           className="
             text-[9px]
@@ -710,45 +833,43 @@ function AgentSim({
 
       {/* ENERGY */}
 
-      <div
-        className="
-          mt-3
-        "
-      >
-        <div
-          className="
-            flex
-            justify-between
-            text-[8px]
-            text-gray-700
-            mb-1
-          "
-        >
-          <span>Energy</span>
-
-          <span>{memory.energy}%</span>
-        </div>
-
-        <div
-          className="
-            h-1
-            bg-white/5
-            rounded-full
-            overflow-hidden
-          "
-        >
+      {!travelling && (
+        <div className="mt-3">
           <div
             className="
-              h-full
-              bg-white/40
-              rounded-full
+              flex
+              justify-between
+              text-[8px]
+              text-gray-700
+              mb-1
             "
-            style={{
-              width: `${Math.max(0, Math.min(100, memory.energy))}%`,
-            }}
-          />
+          >
+            <span>Energy</span>
+
+            <span>{memory.energy}%</span>
+          </div>
+
+          <div
+            className="
+              h-1
+              bg-white/5
+              rounded-full
+              overflow-hidden
+            "
+          >
+            <div
+              className="
+                h-full
+                bg-white/40
+                rounded-full
+              "
+              style={{
+                width: `${Math.max(0, Math.min(100, memory.energy))}%`,
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
