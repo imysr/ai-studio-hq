@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isApiOwnerAuthenticated } from "@/lib/auth/apiOwner";
 
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -21,6 +22,18 @@ type AgentMemoryInput = {
 */
 
 export async function GET() {
+  const authenticated = await isApiOwnerAuthenticated();
+
+  if (!authenticated) {
+    return NextResponse.json(
+      {
+        error: "Unauthorized.",
+      },
+      {
+        status: 401,
+      },
+    );
+  }
   try {
     const { data, error } = await supabaseServer
       .from("agent_memory")
@@ -69,6 +82,19 @@ export async function GET() {
 */
 
 export async function POST(request: Request) {
+  const authenticated = await isApiOwnerAuthenticated();
+
+  if (!authenticated) {
+    return NextResponse.json(
+      {
+        error: "Unauthorized.",
+      },
+      {
+        status: 401,
+      },
+    );
+  }
+
   try {
     const body = await request.json();
 
