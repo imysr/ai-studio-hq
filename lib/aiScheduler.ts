@@ -3,9 +3,7 @@ import { startAgentTask, completeAgentTask } from "@/lib/workEngine";
 
 export async function runAIScheduler() {
   const startedTasks: number[] = [];
-
   const completedTasks: number[] = [];
-
   const blockedTasks: number[] = [];
 
   /*
@@ -19,12 +17,6 @@ export async function runAIScheduler() {
   const pendingTasks = initialTasks.filter((task) => task.status === "Pending");
 
   for (const task of pendingTasks) {
-    /*
-      Refresh task state before checking
-      this task so we do not rely on an
-      old scheduler snapshot.
-    */
-
     const latestTasks = getTasks();
 
     const latestTask = latestTasks.find((item) => item.id === task.id);
@@ -33,27 +25,15 @@ export async function runAIScheduler() {
       continue;
     }
 
-    const dependencies = latestTask.dependsOn ?? [];
-
-    /*
-      No dependencies means the task
-      is immediately ready.
-    */
+    const dependencies: number[] = latestTask.dependsOn ?? [];
 
     if (dependencies.length === 0) {
       startAgentTask(latestTask.id);
-
       startedTasks.push(latestTask.id);
-
       continue;
     }
 
-    /*
-      Every dependency must exist and
-      already be Completed.
-    */
-
-    const dependenciesCompleted = dependencies.every((dependencyId) => {
+    const dependenciesCompleted = dependencies.every((dependencyId: number) => {
       const dependencyTask = latestTasks.find(
         (item) => item.id === dependencyId,
       );
@@ -63,26 +43,20 @@ export async function runAIScheduler() {
 
     if (!dependenciesCompleted) {
       blockedTasks.push(latestTask.id);
-
       continue;
     }
 
-    /*
-      Dependency chain is satisfied.
-    */
-
     startAgentTask(latestTask.id);
-
     startedTasks.push(latestTask.id);
   }
 
   /*
     STEP 2
-    Process tasks that are Working at 50%.
+    Process Working tasks at 50%.
 
-    We refresh after every AI completion
-    because finishing one task may unlock
-    another task in the same mission.
+    After each completion, dependencies
+    are checked again so the workflow can
+    continue without /core being open.
   */
 
   let keepProcessing = true;
@@ -104,13 +78,6 @@ export async function runAIScheduler() {
 
     completedTasks.push(workingTask.id);
 
-    /*
-      After an AI task finishes, check
-      whether any Pending task has now
-      become ready because its dependencies
-      were satisfied.
-    */
-
     const refreshedTasks = getTasks();
 
     const pendingAfterCompletion = refreshedTasks.filter(
@@ -118,15 +85,17 @@ export async function runAIScheduler() {
     );
 
     for (const task of pendingAfterCompletion) {
-      const dependencies = task.dependsOn ?? [];
+      const dependencies: number[] = task.dependsOn ?? [];
 
-      const dependenciesCompleted = dependencies.every((dependencyId) => {
-        const dependencyTask = refreshedTasks.find(
-          (item) => item.id === dependencyId,
-        );
+      const dependenciesCompleted = dependencies.every(
+        (dependencyId: number) => {
+          const dependencyTask = refreshedTasks.find(
+            (item) => item.id === dependencyId,
+          );
 
-        return dependencyTask?.status === "Completed";
-      });
+          return dependencyTask?.status === "Completed";
+        },
+      );
 
       if (dependencies.length === 0 || dependenciesCompleted) {
         startAgentTask(task.id);
@@ -138,12 +107,6 @@ export async function runAIScheduler() {
         keepProcessing = true;
       }
     }
-
-    /*
-      There may also still be another
-      Working 50% task already waiting
-      to be processed.
-    */
 
     const nextTasks = getTasks();
 
@@ -158,7 +121,7 @@ export async function runAIScheduler() {
 
   /*
     STEP 3
-    Final blocked-task check for reporting.
+    Final blocked-task check.
   */
 
   const finalTasks = getTasks();
@@ -168,13 +131,13 @@ export async function runAIScheduler() {
       return false;
     }
 
-    const dependencies = task.dependsOn ?? [];
+    const dependencies: number[] = task.dependsOn ?? [];
 
     if (dependencies.length === 0) {
       return false;
     }
 
-    return !dependencies.every((dependencyId) => {
+    return !dependencies.every((dependencyId: number) => {
       const dependencyTask = finalTasks.find(
         (item) => item.id === dependencyId,
       );
@@ -189,10 +152,6 @@ export async function runAIScheduler() {
     ...stillBlocked.map((task) => task.id),
   );
 
-  /*
-    NOTHING CHANGED
-  */
-
   if (startedTasks.length === 0 && completedTasks.length === 0) {
     return {
       message:
@@ -201,9 +160,7 @@ export async function runAIScheduler() {
           : "No active AI tasks",
 
       startedTasks: [],
-
       completedTasks: [],
-
       blockedTasks,
     };
   }
@@ -215,9 +172,7 @@ export async function runAIScheduler() {
       `${blockedTasks.length} task(s) waiting`,
 
     startedTasks,
-
     completedTasks,
-
     blockedTasks,
   };
 }

@@ -6,6 +6,16 @@ const STORAGE_KEY = "ai_missions";
 const TASK_STORAGE_KEY = "ai_studio_tasks";
 
 /*
+  Tracks the newest mission synchronization.
+
+  taskStorage can await this promise before
+  writing mission_tasks so the mission row
+  always exists first.
+*/
+
+let latestMissionSync: Promise<void> = Promise.resolve();
+
+/*
   GET MISSIONS
 
   localStorage remains the immediate
@@ -102,19 +112,16 @@ function getMissionState(missionId: number) {
   2. Derive latest progress/status.
   3. Synchronize to Supabase.
 
-  Supabase failure must NOT break
-  the local app during migration.
+  The synchronization promise is exposed
+  through waitForMissionSync() so task
+  persistence can safely wait for the
+  mission foreign-key row.
 */
 
 export function saveMissions(missions: Mission[]) {
   if (typeof window === "undefined") {
     return;
   }
-
-  /*
-    KEEP THE LOCAL MISSION OBJECTS
-    UP TO DATE TOO.
-  */
 
   const synchronizedMissions = missions.map((mission) => {
     const state = getMissionState(mission.id);
@@ -128,17 +135,23 @@ export function saveMissions(missions: Mission[]) {
     };
   });
 
-  /*
-    LOCAL PERSISTENCE
-  */
-
   localStorage.setItem(STORAGE_KEY, JSON.stringify(synchronizedMissions));
 
-  /*
-    DATABASE SYNCHRONIZATION
-  */
+  latestMissionSync = syncMissionsToSupabase(synchronizedMissions);
+}
 
-  void syncMissionsToSupabase(synchronizedMissions);
+/*
+  WAIT FOR CURRENT MISSION SYNC
+
+  taskStorage uses this before POSTing
+  mission_tasks. If mission sync fails,
+  syncMissionsToSupabase logs the failure
+  and resolves, preserving the existing
+  local-first fallback behavior.
+*/
+
+export async function waitForMissionSync() {
+  await latestMissionSync;
 }
 
 /*
@@ -193,6 +206,7 @@ export async function loadMissionsFromSupabase(): Promise<Mission[]> {
   try {
     const response = await fetch("/api/missions", {
       method: "GET",
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -237,14 +251,6 @@ export async function loadMissionsFromSupabase(): Promise<Mission[]> {
         finalDeliverableCreatedAt: mission.final_deliverable_created_at ?? "",
       }),
     );
-
-    /*
-      Temporary local cache.
-
-      This keeps the existing synchronous
-      mission engine working while reads
-      are migrated incrementally.
-    */
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(missions));
 
