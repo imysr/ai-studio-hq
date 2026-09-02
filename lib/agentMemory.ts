@@ -33,10 +33,11 @@ const defaultMemory: AgentMemory[] = agents.map((agent) => ({
 /*
   SAVE AGENT MEMORY
 
-  During migration:
-  1. localStorage remains immediate.
-  2. the same memory state syncs to
-     Supabase in the background.
+  localStorage remains the immediate
+  synchronous cache used by workEngine.
+
+  Supabase remains the persistent
+  shared source of truth.
 */
 
 export function saveAgentMemory(agentsMemory: AgentMemory[]) {
@@ -51,20 +52,13 @@ export function saveAgentMemory(agentsMemory: AgentMemory[]) {
 
 /*
   LOAD AGENT MEMORY FROM SUPABASE
-
-  Supabase is now the preferred
-  persistent source of agent state.
-
-  localStorage remains a temporary
-  cache so the existing synchronous
-  work engine can continue using
-  getAgentMemory().
 */
 
 export async function loadAgentMemoryFromSupabase(): Promise<AgentMemory[]> {
   try {
     const response = await fetch("/api/agent-memory", {
       method: "GET",
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -104,14 +98,6 @@ export async function loadAgentMemoryFromSupabase(): Promise<AgentMemory[]> {
       }),
     );
 
-    /*
-      TEMPORARY LOCAL CACHE
-
-      Existing synchronous systems
-      continue working while Supabase
-      becomes the persistent source.
-    */
-
     localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
 
     return memories;
@@ -123,7 +109,7 @@ export async function loadAgentMemoryFromSupabase(): Promise<AgentMemory[]> {
 }
 
 /*
-  GET AGENT MEMORY
+  GET LOCAL AGENT MEMORY CACHE
 */
 
 export function getAgentMemory(): AgentMemory[] {
@@ -186,92 +172,4 @@ async function syncAgentMemoryToSupabase(memories: AgentMemory[]) {
   } catch (error) {
     console.error("Supabase agent memory synchronization error:", error);
   }
-}
-
-/*
-  SEND IDLE AGENT TO LOUNGE
-
-  Only genuinely idle agents are allowed
-  to take a break. Active, pending,
-  generating, or failed agents remain
-  under mission control.
-*/
-
-export function sendAgentToLounge(agentId: number): boolean {
-  const memories = getAgentMemory();
-
-  const memory = memories.find((item) => item.id === agentId);
-
-  if (!memory) {
-    return false;
-  }
-
-  const isIdle =
-    memory.missionStatus === "Idle" &&
-    memory.currentTask === "Waiting for assignment";
-
-  if (!isIdle) {
-    return false;
-  }
-
-  const updated = memories.map((item): AgentMemory => {
-    if (item.id !== agentId) {
-      return item;
-    }
-
-    return {
-      ...item,
-
-      location: "Lounge",
-
-      lastAction: "Taking a short break in the Lounge",
-    };
-  });
-
-  saveAgentMemory(updated);
-
-  return true;
-}
-
-/*
-  RETURN AGENT FROM LOUNGE
-
-  Agent Memory uses "Office" for the
-  employee's normal home department.
-
-  SimsClient resolves "Office" into:
-  Valid   -> CEO Office
-  CodeBot -> Development Lab
-  Pixel   -> Design Studio
-  Sage    -> Learning Academy
-  Atlas   -> Business Room
-  Forge   -> Game Studio
-*/
-
-export function returnAgentFromLounge(agentId: number): boolean {
-  const memories = getAgentMemory();
-
-  const memory = memories.find((item) => item.id === agentId);
-
-  if (!memory || memory.location !== "Lounge") {
-    return false;
-  }
-
-  const updated = memories.map((item): AgentMemory => {
-    if (item.id !== agentId) {
-      return item;
-    }
-
-    return {
-      ...item,
-
-      location: "Office",
-
-      lastAction: "Returned from Lounge break",
-    };
-  });
-
-  saveAgentMemory(updated);
-
-  return true;
 }
