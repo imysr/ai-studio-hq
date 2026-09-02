@@ -187,3 +187,91 @@ async function syncAgentMemoryToSupabase(memories: AgentMemory[]) {
     console.error("Supabase agent memory synchronization error:", error);
   }
 }
+
+/*
+  SEND IDLE AGENT TO LOUNGE
+
+  Only genuinely idle agents are allowed
+  to take a break. Active, pending,
+  generating, or failed agents remain
+  under mission control.
+*/
+
+export function sendAgentToLounge(agentId: number): boolean {
+  const memories = getAgentMemory();
+
+  const memory = memories.find((item) => item.id === agentId);
+
+  if (!memory) {
+    return false;
+  }
+
+  const isIdle =
+    memory.missionStatus === "Idle" &&
+    memory.currentTask === "Waiting for assignment";
+
+  if (!isIdle) {
+    return false;
+  }
+
+  const updated = memories.map((item): AgentMemory => {
+    if (item.id !== agentId) {
+      return item;
+    }
+
+    return {
+      ...item,
+
+      location: "Lounge",
+
+      lastAction: "Taking a short break in the Lounge",
+    };
+  });
+
+  saveAgentMemory(updated);
+
+  return true;
+}
+
+/*
+  RETURN AGENT FROM LOUNGE
+
+  Agent Memory uses "Office" for the
+  employee's normal home department.
+
+  SimsClient resolves "Office" into:
+  Valid   -> CEO Office
+  CodeBot -> Development Lab
+  Pixel   -> Design Studio
+  Sage    -> Learning Academy
+  Atlas   -> Business Room
+  Forge   -> Game Studio
+*/
+
+export function returnAgentFromLounge(agentId: number): boolean {
+  const memories = getAgentMemory();
+
+  const memory = memories.find((item) => item.id === agentId);
+
+  if (!memory || memory.location !== "Lounge") {
+    return false;
+  }
+
+  const updated = memories.map((item): AgentMemory => {
+    if (item.id !== agentId) {
+      return item;
+    }
+
+    return {
+      ...item,
+
+      location: "Office",
+
+      lastAction: "Returned from Lounge break",
+    };
+  });
+
+  saveAgentMemory(updated);
+
+  return true;
+}

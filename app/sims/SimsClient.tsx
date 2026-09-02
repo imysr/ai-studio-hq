@@ -86,45 +86,37 @@ export default function SimsClient() {
   const [liveMemory, setLiveMemory] = useState<LiveAgentMemory[]>([]);
 
   /*
-    displayLocations controls where
-    characters are visually rendered.
-
-    Supabase remains the real source
-    of truth.
+    Visual position is separate from
+    Supabase location so agents can
+    temporarily appear in the hallway
+    while travelling.
   */
 
   const [displayLocations, setDisplayLocations] = useState<DisplayLocationMap>(
     {},
   );
 
-  /*
-    travellingAgents lets the UI know
-    which employees are currently
-    walking through the hallway.
-  */
-
   const [travellingAgents, setTravellingAgents] = useState<number[]>([]);
 
   /*
-    Keeps track of the latest resolved
-    real room for every agent.
+    Latest real location received
+    from Agent Memory.
   */
 
   const previousLocations = useRef<DisplayLocationMap>({});
 
   /*
-    Prevent overlapping movement
-    animations for the same employee.
+    Prevent duplicate transitions
+    for the same employee.
   */
 
   const activeTransitions = useRef<Set<number>>(new Set());
 
-  /*
-    Timers are stored so they can be
-    cleaned up if the page unmounts.
-  */
-
   const transitionTimers = useRef<number[]>([]);
+
+  /*
+    LOAD LIVE AGENT MEMORY
+  */
 
   useEffect(() => {
     let cancelled = false;
@@ -174,9 +166,13 @@ export default function SimsClient() {
         setLiveMemory(memories);
 
         /*
-          Process each agent's real
-          location against the previous
-          known location.
+          Detect real location changes.
+
+          First page load places agents
+          immediately without animation.
+
+          Later changes use:
+          Room -> Hallway -> Destination.
         */
 
         memories.forEach((memory: LiveAgentMemory) => {
@@ -185,12 +181,7 @@ export default function SimsClient() {
           const previousRoom = previousLocations.current[memory.id];
 
           /*
-              First load:
-              place the employee directly
-              into the real room.
-
-              We don't animate initial
-              page hydration.
+              FIRST LOAD
             */
 
           if (!previousRoom) {
@@ -206,7 +197,7 @@ export default function SimsClient() {
           }
 
           /*
-              Nothing changed.
+              LOCATION UNCHANGED
             */
 
           if (previousRoom === targetRoom) {
@@ -214,20 +205,14 @@ export default function SimsClient() {
           }
 
           /*
-              Remember the newest real
-              destination immediately.
-
-              This prevents the same
-              change from being detected
-              every 3 seconds.
+              Remember new real
+              destination.
             */
 
           previousLocations.current[memory.id] = targetRoom;
 
           /*
-              If an animation is already
-              running, don't start another
-              overlapping transition.
+              Do not overlap transitions.
             */
 
           if (activeTransitions.current.has(memory.id)) {
@@ -237,8 +222,8 @@ export default function SimsClient() {
           activeTransitions.current.add(memory.id);
 
           /*
-              STEP 1:
-              move character into hallway.
+              STEP 1
+              Enter hallway.
             */
 
           setDisplayLocations((current) => ({
@@ -252,9 +237,9 @@ export default function SimsClient() {
           );
 
           /*
-              STEP 2:
-              after two seconds,
-              enter destination room.
+              STEP 2
+              Enter destination after
+              walking for 3.5 seconds.
             */
 
           const timer = window.setTimeout(() => {
@@ -294,6 +279,131 @@ export default function SimsClient() {
       transitionTimers.current = [];
     };
   }, []);
+
+  /*
+    SEND ONE IDLE AGENT
+    TO THE LOUNGE.
+
+    This writes directly through
+    /api/agent-memory so Supabase
+    remains the source of truth.
+  */
+
+  async function moveAgentToLounge() {
+    const idleAgent = liveMemory.find(
+      (memory) =>
+        memory.missionStatus === "Idle" &&
+        memory.currentTask === "Waiting for assignment" &&
+        resolveVirtualLocation(memory) !== "Lounge",
+    );
+
+    if (!idleAgent) {
+      console.log("No idle agent available for Lounge.");
+
+      return;
+    }
+
+    const updatedMemories = liveMemory.map((memory): LiveAgentMemory => {
+      if (memory.id !== idleAgent.id) {
+        return memory;
+      }
+
+      return {
+        ...memory,
+
+        location: "Lounge",
+
+        lastAction: "Taking a short break in the Lounge",
+      };
+    });
+
+    try {
+      const response = await fetch("/api/agent-memory", {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify(updatedMemories),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+
+        console.error("Failed to send agent to Lounge:", data);
+
+        return;
+      }
+
+      setLiveMemory(updatedMemories);
+    } catch (error) {
+      console.error("Lounge movement error:", error);
+    }
+  }
+
+  /*
+    RETURN FIRST LOUNGE AGENT
+    TO THEIR HOME DEPARTMENT.
+
+    "Office" is translated by
+    resolveVirtualLocation() into
+    each employee's own room.
+  */
+
+  async function moveAgentHome() {
+    const loungeAgent = liveMemory.find(
+      (memory) => resolveVirtualLocation(memory) === "Lounge",
+    );
+
+    if (!loungeAgent) {
+      console.log("No agent currently in Lounge.");
+
+      return;
+    }
+
+    const updatedMemories = liveMemory.map((memory): LiveAgentMemory => {
+      if (memory.id !== loungeAgent.id) {
+        return memory;
+      }
+
+      return {
+        ...memory,
+
+        location: "Office",
+
+        lastAction: "Returned from Lounge break",
+      };
+    });
+
+    try {
+      const response = await fetch("/api/agent-memory", {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify(updatedMemories),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+
+        console.error("Failed to return agent home:", data);
+
+        return;
+      }
+
+      setLiveMemory(updatedMemories);
+    } catch (error) {
+      console.error("Return home error:", error);
+    }
+  }
+
+  /*
+    ROOM OCCUPANTS
+  */
 
   function getAgentsInRoom(room: VirtualRoom) {
     return liveMemory.filter((memory) => {
@@ -385,6 +495,102 @@ export default function SimsClient() {
           </Link>
         </div>
 
+        {/* LOUNGE CONTROLS */}
+
+        <div
+          className="
+            mb-6
+            p-4
+            rounded-2xl
+            border
+            border-white/10
+            bg-white/[0.02]
+          "
+        >
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              gap-4
+              flex-wrap
+            "
+          >
+            <div>
+              <p
+                className="
+                  text-sm
+                  font-semibold
+                  text-gray-300
+                "
+              >
+                ☕ Lounge Test
+              </p>
+
+              <p
+                className="
+                  text-xs
+                  text-gray-600
+                  mt-1
+                "
+              >
+                Test idle-agent movement between home departments and the
+                Lounge.
+              </p>
+            </div>
+
+            <div
+              className="
+                flex
+                gap-2
+                flex-wrap
+              "
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  void moveAgentToLounge();
+                }}
+                className="
+                  px-4
+                  py-2
+                  rounded-xl
+                  border
+                  border-white/10
+                  bg-white/5
+                  text-xs
+                  text-gray-300
+                  hover:bg-white/10
+                  transition
+                "
+              >
+                ☕ Send Idle Agent to Lounge
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void moveAgentHome();
+                }}
+                className="
+                  px-4
+                  py-2
+                  rounded-xl
+                  border
+                  border-white/10
+                  bg-white/5
+                  text-xs
+                  text-gray-300
+                  hover:bg-white/10
+                  transition
+                "
+              >
+                🏢 Return Agent Home
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* FLOOR */}
 
         <section
@@ -404,6 +610,8 @@ export default function SimsClient() {
               min-h-[780px]
             "
           >
+            {/* TOP ROW */}
+
             <Room
               room="CEO Office"
               subtitle="Executive Office"
@@ -436,6 +644,8 @@ export default function SimsClient() {
                 row-span-2
               "
             />
+
+            {/* MIDDLE ROW */}
 
             <Room
               room="Development Lab"
@@ -470,6 +680,8 @@ export default function SimsClient() {
                 row-span-3
               "
             />
+
+            {/* BOTTOM ROW */}
 
             <Room
               room="Learning Academy"
@@ -506,7 +718,7 @@ export default function SimsClient() {
           </div>
         </section>
 
-        {/* LIVE LEGEND */}
+        {/* LIVE STATUS */}
 
         <div
           className="
@@ -563,6 +775,8 @@ function Room({
         ${className}
       `}
     >
+      {/* ROOM LABEL */}
+
       <p
         className="
           text-xs
@@ -723,9 +937,12 @@ function AgentSim({
   travelling = false,
 }: AgentSimProps) {
   const working =
-    memory.missionStatus === "Working" || memory.missionStatus === "Generating";
+    memory.missionStatus === "Working" ||
+    memory.missionStatus === "Generating" ||
+    memory.missionStatus === "Generating AI Result";
 
-  const waiting = memory.missionStatus === "Waiting";
+  const waiting =
+    memory.missionStatus === "Waiting" || memory.missionStatus === "Pending";
 
   return (
     <div
@@ -754,7 +971,9 @@ function AgentSim({
                 ? "bg-green-400"
                 : waiting
                   ? "bg-yellow-400"
-                  : "bg-gray-500"
+                  : memory.missionStatus === "AI Generation Error"
+                    ? "bg-red-400"
+                    : "bg-gray-500"
           }
         `}
       />
@@ -821,11 +1040,11 @@ function AgentSim({
       {!compact && !travelling && (
         <p
           className="
-            text-[9px]
-            text-gray-600
-            mt-2
-            line-clamp-2
-          "
+              text-[9px]
+              text-gray-600
+              mt-2
+              line-clamp-2
+            "
         >
           {memory.currentTask}
         </p>
