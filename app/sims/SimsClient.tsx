@@ -37,20 +37,24 @@ const homeRooms: Record<number, VirtualRoom> = {
 };
 
 /*
-  AUTOMATIC BREAK SETTINGS
+  AUTOMATIC BREAK + ENERGY SETTINGS
 
-  Every 20 seconds the Sims layer may
-  send one eligible idle employee on break.
+  The Virtual HQ now uses Agent Memory
+  energy as a real simulation mechanic.
 
-  Automatic breaks last 15 seconds.
-
-  Maximum two employees may be in Lounge
-  at once.
+  - Working tasks consume energy in workEngine.
+  - Tired idle employees receive Lounge priority.
+  - Lounge restores energy over time.
+  - Missions always override break behaviour.
 */
 
-const AUTO_BREAK_CHECK_MS = 20_000;
-const AUTO_BREAK_DURATION_MS = 15_000;
+const AUTO_BREAK_CHECK_MS = 10_000;
+const AUTO_BREAK_DURATION_MS = 20_000;
 const MAX_LOUNGE_OCCUPANTS = 2;
+
+const TIRED_ENERGY_THRESHOLD = 90;
+const ENERGY_RECOVERY_INTERVAL_MS = 5_000;
+const ENERGY_RECOVERY_AMOUNT = 10;
 
 function resolveVirtualLocation(memory: LiveAgentMemory): VirtualRoom {
   const location = memory.location?.trim() || "Office";
@@ -321,16 +325,32 @@ export default function SimsClient() {
   }, []);
 
   /*
-    CHECK WHETHER AN AGENT MAY TAKE A BREAK
+    IDLE + BREAK ELIGIBILITY
+
+    Manual Lounge controls may move any
+    genuinely idle employee.
+
+    Automatic breaks are reserved for
+    employees below the tired threshold.
   */
+
+  function isIdleAgent(memory: LiveAgentMemory) {
+    return (
+      memory.missionStatus === "Idle" &&
+      memory.currentTask === "Waiting for assignment"
+    );
+  }
 
   function canTakeBreak(memory: LiveAgentMemory) {
     return (
-      memory.missionStatus === "Idle" &&
-      memory.currentTask === "Waiting for assignment" &&
+      isIdleAgent(memory) &&
       resolveVirtualLocation(memory) !== "Lounge" &&
       !activeTransitions.current.has(memory.id)
     );
+  }
+
+  function canTakeAutomaticBreak(memory: LiveAgentMemory) {
+    return canTakeBreak(memory) && memory.energy < TIRED_ENERGY_THRESHOLD;
   }
 
   /*
@@ -460,12 +480,62 @@ export default function SimsClient() {
   }
 
   /*
+    LOUNGE ENERGY RECOVERY
+
+    Every five seconds, idle employees
+    currently in Lounge recover energy.
+
+    We only persist when energy actually
+    changes, which avoids unnecessary
+    Supabase writes.
+  */
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const current = liveMemoryRef.current;
+
+      let changed = false;
+
+      const updated = current.map((memory): LiveAgentMemory => {
+        const recovering =
+          memory.location === "Lounge" &&
+          isIdleAgent(memory) &&
+          memory.energy < 100;
+
+        if (!recovering) {
+          return memory;
+        }
+
+        changed = true;
+
+        return {
+          ...memory,
+          energy: Math.min(100, memory.energy + ENERGY_RECOVERY_AMOUNT),
+          lastAction: "Recovering energy in the Lounge",
+        };
+      });
+
+      if (changed) {
+        void persistAgentMemory(updated);
+      }
+    }, ENERGY_RECOVERY_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  /*
     AUTOMATIC IDLE BREAK LOOP
 
     Mission state always wins.
 
-    Only Idle + Waiting employees
-    may be moved automatically.
+    Only tired employees who are genuinely
+    Idle + Waiting may be moved automatically.
+
+    The lowest-energy eligible employee
+    receives priority instead of selecting
+    a random employee.
   */
 
   useEffect(() => {
@@ -484,15 +554,15 @@ export default function SimsClient() {
         return;
       }
 
-      const eligibleAgents = current.filter(canTakeBreak);
+      const eligibleAgents = current
+        .filter(canTakeAutomaticBreak)
+        .sort((first, second) => first.energy - second.energy);
 
-      if (eligibleAgents.length === 0) {
+      const selectedAgent = eligibleAgents[0];
+
+      if (!selectedAgent) {
         return;
       }
-
-      const randomIndex = Math.floor(Math.random() * eligibleAgents.length);
-
-      const selectedAgent = eligibleAgents[randomIndex];
 
       void moveAgentToLoungeById(selectedAgent.id, true);
     }, AUTO_BREAK_CHECK_MS);
@@ -631,7 +701,8 @@ export default function SimsClient() {
                   mt-1
                 "
               >
-                Idle employees may automatically visit the Lounge and return.
+                Tired idle employees automatically use the Lounge to recover
+                energy.
               </p>
             </div>
 
@@ -852,6 +923,10 @@ export default function SimsClient() {
           <span>
             ● Auto breaks {autoBreaksEnabled ? "enabled" : "disabled"}
           </span>
+
+          <span>● Tired below {TIRED_ENERGY_THRESHOLD}%</span>
+
+          <span>● Lounge restores {ENERGY_RECOVERY_AMOUNT}% / 5 sec</span>
         </div>
       </div>
     </main>

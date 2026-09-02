@@ -880,6 +880,31 @@ Task completed successfully.
 }
 
 /*
+  ENERGY HELPERS
+
+  Energy is now persistent simulation state.
+
+  A normal AI task uses energy in stages:
+  - task start:      -5
+  - AI generation: -10
+  - completion:      -5
+
+  Retries use a small additional amount.
+
+  Energy is restored by the Virtual HQ
+  Lounge rather than being reset to 100
+  when a task finishes.
+*/
+
+function clampEnergy(value: number) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function spendEnergy(currentEnergy: number, amount: number) {
+  return clampEnergy(currentEnergy - amount);
+}
+
+/*
   NORMAL AGENT MEMORY
 */
 
@@ -891,25 +916,24 @@ function updateAgentMemory(task: MissionTask, status: string) {
       return agent;
     }
 
+    const completed = status === "Completed";
+
     return {
       ...agent,
 
-      currentTask:
-        status === "Completed" ? "Waiting for assignment" : task.title,
+      currentTask: completed ? "Waiting for assignment" : task.title,
 
-      missionStatus: status === "Completed" ? "Idle" : "Working",
+      missionStatus: completed ? "Idle" : "Working",
 
-      location:
-        status === "Completed"
-          ? "Office"
-          : (workLocations[task.assignedAgent] ?? "Office"),
+      location: completed
+        ? "Office"
+        : (workLocations[task.assignedAgent] ?? "Office"),
 
-      energy: status === "Completed" ? 100 : 90,
+      energy: spendEnergy(agent.energy, 5),
 
-      lastAction:
-        status === "Completed"
-          ? `Completed ${task.title}`
-          : `Started ${task.title}`,
+      lastAction: completed
+        ? `Completed ${task.title}`
+        : `Started ${task.title}`,
     };
   });
 
@@ -937,7 +961,7 @@ function updateAgentGeneratingMemory(task: MissionTask) {
 
       location: workLocations[task.assignedAgent] ?? "Office",
 
-      energy: 85,
+      energy: spendEnergy(agent.energy, 10),
 
       lastAction: `Generating AI work for ${task.title}`,
     };
@@ -971,7 +995,7 @@ function updateAgentRetryMemory(task: MissionTask) {
 
       location: workLocations[task.assignedAgent] ?? "Office",
 
-      energy: 85,
+      energy: spendEnergy(agent.energy, 2),
 
       lastAction: `Retrying AI generation for ${task.title}`,
     };
@@ -986,8 +1010,9 @@ function updateAgentRetryMemory(task: MissionTask) {
   This state is reached only after
   all automatic retries have failed.
 
-  The manual Retry AI button
-  remains available.
+  Failed agents stay in their work room.
+  They are NOT treated as idle employees,
+  so the Lounge system will not move them.
 */
 
 function updateAgentErrorMemory(task: MissionTask) {
@@ -1007,7 +1032,7 @@ function updateAgentErrorMemory(task: MissionTask) {
 
       location: workLocations[task.assignedAgent] ?? "Office",
 
-      energy: 85,
+      energy: spendEnergy(agent.energy, 2),
 
       lastAction: `AI generation failed for ${task.title}`,
     };
