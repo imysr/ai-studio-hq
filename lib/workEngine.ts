@@ -271,17 +271,39 @@ export async function retryAgentTask(taskId: number) {
   them in the next agent's instructions.
 */
 
+const MAX_AI_INSTRUCTIONS_LENGTH = 9_500;
+const MAX_CONTEXT_RESULT_LENGTH = 3_500;
+
+function trimTextToLength(text: string, maxLength: number) {
+  const cleanText = text.trim();
+
+  if (cleanText.length <= maxLength) {
+    return cleanText;
+  }
+
+  return `${cleanText.slice(0, maxLength)}\n\n[Context trimmed to fit AI request limits.]`;
+}
+
 function buildCollaborationInstructions(task: MissionTask): string {
   const contextTaskIds = task.contextFromTasks ?? [];
 
   /*
-    No collaboration context required.
+    Keep the primary task description first.
 
-    Keep the original task description.
+    /api/ai currently accepts a maximum of
+    10,000 instruction characters, so this
+    builder intentionally stays below that
+    server-side limit.
+
+    Long collaborator results are trimmed
+    instead of causing the entire retry or
+    mission task to fail validation.
   */
 
+  const primaryTask = trimTextToLength(task.description, 4_000);
+
   if (contextTaskIds.length === 0) {
-    return task.description;
+    return primaryTask;
   }
 
   const allTasks = getTasks();
@@ -292,20 +314,19 @@ function buildCollaborationInstructions(task: MissionTask): string {
       Boolean(item && item.status === "Completed" && item.result?.trim()),
     );
 
-  /*
-    If no usable completed results were
-    found, fall back safely to the
-    original instructions.
-  */
-
   if (contextTasks.length === 0) {
-    return task.description;
+    return primaryTask;
   }
 
   const collaborationContext = contextTasks
     .map((contextTask, index) => {
       const contextAgent = agents.find(
         (agent) => agent.id === contextTask.assignedAgent,
+      );
+
+      const trimmedResult = trimTextToLength(
+        contextTask.result ?? "",
+        MAX_CONTEXT_RESULT_LENGTH,
       );
 
       return `
@@ -318,15 +339,15 @@ Previous Task:
 ${contextTask.title}
 
 Completed Result:
-${contextTask.result}
-          `.trim();
+${trimmedResult}
+      `.trim();
     })
     .join("\n\n------------------------------\n\n");
 
-  return `
+  const instructions = `
 PRIMARY TASK
 
-${task.description}
+${primaryTask}
 
 
 COLLABORATION CONTEXT
@@ -348,6 +369,8 @@ Complete your own assigned task using the collaboration context above where usef
 
 Your response should remain focused on your own specialist responsibility.
   `.trim();
+
+  return trimTextToLength(instructions, MAX_AI_INSTRUCTIONS_LENGTH);
 }
 
 /*
