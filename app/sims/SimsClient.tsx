@@ -620,7 +620,7 @@ export default function SimsClient() {
                 text-gray-600
               "
             >
-              AI Studio Simulation
+              MPA AI Operations
             </p>
 
             <h1
@@ -630,7 +630,7 @@ export default function SimsClient() {
                 mt-2
               "
             >
-              🏢 Virtual HQ
+              🏢 Virtual Operations Centre
             </h1>
 
             <p
@@ -639,7 +639,7 @@ export default function SimsClient() {
                 mt-2
               "
             >
-              Live floor simulation of AI Studio HQ.
+              Live floor simulation of the MPA AI Agent workforce.
             </p>
           </div>
 
@@ -658,7 +658,7 @@ export default function SimsClient() {
               transition
             "
           >
-            ← Back to HQ
+            ← Back to MPA AI
           </Link>
         </div>
 
@@ -691,7 +691,7 @@ export default function SimsClient() {
                   text-gray-300
                 "
               >
-                ☕ Idle Behaviour
+                ☕ Team Energy & Breaks
               </p>
 
               <p
@@ -701,7 +701,7 @@ export default function SimsClient() {
                   mt-1
                 "
               >
-                Tired idle employees automatically use the Lounge to recover
+                Tired idle agents automatically use the Team Lounge to recover
                 energy.
               </p>
             </div>
@@ -752,7 +752,7 @@ export default function SimsClient() {
                   transition
                 "
               >
-                ☕ Send Idle Agent
+                ☕ Send Agent to Team Lounge
               </button>
 
               <button
@@ -773,7 +773,7 @@ export default function SimsClient() {
                   transition
                 "
               >
-                🏢 Return Agent
+                🏢 Return Agent to Workspace
               </button>
             </div>
           </div>
@@ -800,7 +800,8 @@ export default function SimsClient() {
           >
             <Room
               room="CEO Office"
-              subtitle="Executive Office"
+              displayName="Operations Office"
+              subtitle="MPA Operations"
               occupants={getAgentsInRoom("CEO Office")}
               isTravelling={isTravelling}
               className="
@@ -811,7 +812,8 @@ export default function SimsClient() {
 
             <Room
               room="AI Core"
-              subtitle="Central Meeting Room"
+              displayName="MPA AI Core"
+              subtitle="AI Coordination Centre"
               occupants={getAgentsInRoom("AI Core")}
               isTravelling={isTravelling}
               className="
@@ -822,7 +824,8 @@ export default function SimsClient() {
 
             <Room
               room="Business Room"
-              subtitle="Strategy Department"
+              displayName="Strategy Room"
+              subtitle="Marketing & Business Strategy"
               occupants={getAgentsInRoom("Business Room")}
               isTravelling={isTravelling}
               className="
@@ -833,7 +836,8 @@ export default function SimsClient() {
 
             <Room
               room="Development Lab"
-              subtitle="Engineering Department"
+              displayName="Technology Lab"
+              subtitle="LMS & Automation"
               occupants={getAgentsInRoom("Development Lab")}
               isTravelling={isTravelling}
               className="
@@ -844,6 +848,7 @@ export default function SimsClient() {
 
             <Room
               room="Main Hallway"
+              displayName="MPA Main Hallway"
               subtitle="Agent Movement Zone"
               occupants={getAgentsInRoom("Main Hallway")}
               isTravelling={isTravelling}
@@ -856,7 +861,8 @@ export default function SimsClient() {
 
             <Room
               room="Design Studio"
-              subtitle="Creative Department"
+              displayName="Creative Studio"
+              subtitle="Creative & Content"
               occupants={getAgentsInRoom("Design Studio")}
               isTravelling={isTravelling}
               className="
@@ -867,7 +873,8 @@ export default function SimsClient() {
 
             <Room
               room="Learning Academy"
-              subtitle="Education Department"
+              displayName="Learning Academy"
+              subtitle="Curriculum & Learning"
               occupants={getAgentsInRoom("Learning Academy")}
               isTravelling={isTravelling}
               className="
@@ -878,7 +885,8 @@ export default function SimsClient() {
 
             <Room
               room="Lounge"
-              subtitle="Idle / Waiting Area"
+              displayName="Team Lounge"
+              subtitle="Team Recovery Area"
               occupants={getAgentsInRoom("Lounge")}
               isTravelling={isTravelling}
               className="
@@ -889,7 +897,8 @@ export default function SimsClient() {
 
             <Room
               room="Game Studio"
-              subtitle="Game Development"
+              displayName="Content Studio"
+              subtitle="Content & Engagement"
               occupants={getAgentsInRoom("Game Studio")}
               isTravelling={isTravelling}
               className="
@@ -912,7 +921,7 @@ export default function SimsClient() {
             text-gray-600
           "
         >
-          <span>● {liveMemory.length} AI employees online</span>
+          <span>● {liveMemory.length} MPA AI agents online</span>
 
           <span>● Live update every 3 seconds</span>
 
@@ -926,7 +935,7 @@ export default function SimsClient() {
 
           <span>● Tired below {TIRED_ENERGY_THRESHOLD}%</span>
 
-          <span>● Lounge restores {ENERGY_RECOVERY_AMOUNT}% / 5 sec</span>
+          <span>● Team Lounge restores {ENERGY_RECOVERY_AMOUNT}% / 5 sec</span>
         </div>
       </div>
     </main>
@@ -935,6 +944,8 @@ export default function SimsClient() {
 
 type RoomProps = {
   room: VirtualRoom;
+
+  displayName?: string;
 
   subtitle: string;
 
@@ -947,6 +958,7 @@ type RoomProps = {
 
 function Room({
   room,
+  displayName,
   subtitle,
   occupants,
   isTravelling,
@@ -993,7 +1005,7 @@ function Room({
             mt-1
           "
         >
-          {room}
+          {displayName ?? room}
         </h2>
 
         {occupants.length > 0 && (
