@@ -17,23 +17,36 @@ export default function Home() {
         text-center
       "
       >
+        <p
+          className="
+          text-sm
+          uppercase
+          tracking-[0.35em]
+          text-blue-400
+        "
+        >
+          Millennial Professional Academy
+        </p>
+
         <h1
           className="
           text-6xl
           font-bold
           tracking-widest
+          mt-5
         "
         >
-          🖤 AI STUDIO HQ
+          🤖 MPA AI AGENT
         </h1>
 
         <p
           className="
           mt-4
           text-gray-500
+          text-lg
         "
         >
-          Underground Artificial Intelligence Facility
+          AI Operations & Automation for MPA
         </p>
 
         <div
@@ -66,18 +79,32 @@ export default function Home() {
               mt-5
             "
             >
-              AI CORE
+              MPA AI CORE
             </h2>
 
-            <p className="text-gray-500">Central Brain</p>
+            <p className="text-gray-500">Operations Intelligence</p>
           </div>
         </div>
+
+        <p
+          className="
+          max-w-2xl
+          mx-auto
+          mt-10
+          text-gray-500
+          leading-7
+        "
+        >
+          Coordinate MPA marketing, course development, content creation,
+          business strategy, technology and daily operations with a specialised
+          AI workforce.
+        </p>
 
         <Link
           href="/hq"
           className="
             inline-block
-            mt-16
+            mt-12
             bg-white
             text-black
             px-10
@@ -86,7 +113,7 @@ export default function Home() {
             font-bold
           "
         >
-          🚪 Enter Headquarters
+          🚪 Enter MPA AI Operations
         </Link>
       </div>
     </main>
