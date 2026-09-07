@@ -7,7 +7,6 @@ import { agents } from "@/data/agents";
 import type { MissionTask } from "@/data/tasks";
 
 import { getTasks, loadTasksFromSupabase } from "@/lib/taskStorage";
-
 import { getAIRequestState, type AIRequestState } from "@/lib/aiRequestManager";
 
 type AgentOperationalStatus = "Working" | "Waiting" | "Assigned" | "Idle";
@@ -33,13 +32,13 @@ function getAgentOperationalStatus(
   }
 
   const waitingTask = pendingTasks.find((task) => {
-    const dependencies = task.dependsOn ?? [];
+    const dependencies: number[] = task.dependsOn ?? [];
 
     if (dependencies.length === 0) {
       return false;
     }
 
-    return !dependencies.every((dependencyId) => {
+    return !dependencies.every((dependencyId: number) => {
       const dependencyTask = tasks.find((item) => item.id === dependencyId);
 
       return dependencyTask?.status === "Completed";
@@ -72,28 +71,24 @@ function getStatusClasses(status: AgentOperationalStatus) {
     case "Working":
       return {
         badge: "border-green-500/30 bg-green-500/10 text-green-400",
-
         dot: "bg-green-400",
       };
 
     case "Waiting":
       return {
         badge: "border-yellow-500/30 bg-yellow-500/10 text-yellow-400",
-
         dot: "bg-yellow-400",
       };
 
     case "Assigned":
       return {
         badge: "border-blue-500/30 bg-blue-500/10 text-blue-400",
-
         dot: "bg-blue-400",
       };
 
     default:
       return {
         badge: "border-white/10 bg-white/[0.03] text-gray-500",
-
         dot: "bg-gray-600",
       };
   }
@@ -104,55 +99,40 @@ function getAIStatusClasses(status: AIRequestState["status"]) {
     case "Processing":
       return {
         text: "text-green-400",
-
         border: "border-green-500/20",
-
         background: "bg-green-500/10",
-
         dot: "bg-green-400",
       };
 
     case "Rate Limited":
       return {
         text: "text-yellow-400",
-
         border: "border-yellow-500/20",
-
         background: "bg-yellow-500/10",
-
         dot: "bg-yellow-400",
       };
 
     case "Waiting":
       return {
         text: "text-blue-400",
-
         border: "border-blue-500/20",
-
         background: "bg-blue-500/10",
-
         dot: "bg-blue-400",
       };
 
     case "Error":
       return {
         text: "text-red-400",
-
         border: "border-red-500/20",
-
         background: "bg-red-500/10",
-
         dot: "bg-red-400",
       };
 
     default:
       return {
         text: "text-gray-400",
-
         border: "border-white/10",
-
         background: "bg-white/[0.03]",
-
         dot: "bg-gray-500",
       };
   }
@@ -164,7 +144,6 @@ function getRetryText(retryAt: string) {
   }
 
   const retryTime = new Date(retryAt).getTime();
-
   const remaining = retryTime - Date.now();
 
   if (remaining <= 0) {
@@ -178,46 +157,22 @@ function getRetryText(retryAt: string) {
   }
 
   const minutes = Math.floor(seconds / 60);
-
   const leftoverSeconds = seconds % 60;
 
   return `${minutes}m ${leftoverSeconds}s`;
 }
 
 export default function HQClient() {
-  /*
-    HYDRATION-SAFE INITIAL STATE
-
-    The server and first browser render
-    must use the same values.
-
-    Real localStorage values are loaded
-    only after the component mounts.
-  */
-
   const [tasks, setTasks] = useState<MissionTask[]>([]);
 
   const [aiRequestState, setAIRequestState] = useState<AIRequestState>({
     status: "Idle",
-
     activeRequests: 0,
-
     queuedRequests: 0,
-
     failedRequests: 0,
-
     lastError: "",
-
     retryAt: "",
   });
-
-  /*
-    LIVE HQ SYNCHRONIZATION
-
-    Once mounted in the browser,
-    read task + AI request state
-    from localStorage every second.
-  */
 
   useEffect(() => {
     let cancelled = false;
@@ -230,7 +185,6 @@ export default function HQClient() {
       }
 
       setTasks(supabaseTasks);
-
       setAIRequestState(getAIRequestState());
     }
 
@@ -238,7 +192,6 @@ export default function HQClient() {
 
     const syncHQ = () => {
       setTasks(getTasks());
-
       setAIRequestState(getAIRequestState());
     };
 
@@ -246,7 +199,6 @@ export default function HQClient() {
 
     return () => {
       cancelled = true;
-
       window.clearInterval(interval);
     };
   }, []);
@@ -270,132 +222,62 @@ export default function HQClient() {
   const aiStatusClasses = getAIStatusClasses(aiRequestState.status);
 
   return (
-    <main
-      className="
-      min-h-screen
-      bg-black
-      text-white
-      p-8
-      "
-    >
-      <div
-        className="
-        max-w-7xl
-        mx-auto
-        "
-      >
+    <main className="min-h-screen bg-black text-white p-8">
+      <div className="max-w-7xl mx-auto">
         {/* HEADER */}
 
-        <header
-          className="
-          text-center
-          mb-14
-          "
-        >
-          <div
-            className="
-            text-7xl
-            "
-          >
-            🏢
-          </div>
+        <header className="text-center mb-14">
+          <p className="text-xs uppercase tracking-[0.35em] text-blue-400">
+            Millennial Professional Academy
+          </p>
 
-          <h1
-            className="
-            text-6xl
-            font-bold
-            mt-5
-            "
-          >
-            AI STUDIO HQ
-          </h1>
+          <div className="text-7xl mt-5">🤖</div>
 
-          <p
-            className="
-            text-gray-500
-            mt-3
-            text-lg
-            "
-          >
-            Underground Artificial Intelligence Facility
+          <h1 className="text-6xl font-bold mt-5">MPA AI AGENT</h1>
+
+          <p className="text-gray-500 mt-3 text-lg">
+            AI Operations & Automation for MPA
           </p>
         </header>
 
         {/* AI REQUEST MANAGER */}
 
-        <section
-          className="
-          mb-8
-          bg-[#080808]
-          border
-          border-white/10
-          rounded-3xl
-          p-8
-          "
-        >
-          <div
-            className="
-            flex
-            items-start
-            justify-between
-            gap-6
-            flex-wrap
-            "
-          >
+        <section className="mb-8 bg-[#080808] border border-white/10 rounded-3xl p-8">
+          <div className="flex items-start justify-between gap-6 flex-wrap">
             <div>
-              <p
-                className="
-                text-xs
-                uppercase
-                tracking-widest
-                text-gray-600
-                "
-              >
-                AI Infrastructure
+              <p className="text-xs uppercase tracking-widest text-gray-600">
+                MPA AI Infrastructure
               </p>
 
-              <h2
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                🧠 AI Request Manager
-              </h2>
+              <h2 className="text-3xl font-bold mt-2">🧠 AI Request Manager</h2>
 
-              <p
-                className="
-                text-gray-500
-                mt-2
-                "
-              >
-                Shared Gemini request, queue and retry status across Valid and
-                all specialist agents.
+              <p className="text-gray-500 mt-2">
+                Shared Gemini request, queue and retry status across the MPA AI
+                workforce.
               </p>
             </div>
 
             <div
               className={`
-              inline-flex
-              items-center
-              gap-2
-              px-4
-              py-2
-              rounded-full
-              border
-              text-sm
-              ${aiStatusClasses.border}
-              ${aiStatusClasses.background}
-              ${aiStatusClasses.text}
+                inline-flex
+                items-center
+                gap-2
+                px-4
+                py-2
+                rounded-full
+                border
+                text-sm
+                ${aiStatusClasses.border}
+                ${aiStatusClasses.background}
+                ${aiStatusClasses.text}
               `}
             >
               <span
                 className={`
-                w-2
-                h-2
-                rounded-full
-                ${aiStatusClasses.dot}
+                  w-2
+                  h-2
+                  rounded-full
+                  ${aiStatusClasses.dot}
                 `}
               />
 
@@ -403,192 +285,53 @@ export default function HQClient() {
             </div>
           </div>
 
-          <div
-            className="
-            grid
-            sm:grid-cols-2
-            lg:grid-cols-5
-            gap-4
-            mt-8
-            "
-          >
-            <div
-              className="
-              bg-black
-              border
-              border-white/10
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-gray-500
-                text-sm
-                "
-              >
-                Provider
-              </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-8">
+            <div className="bg-black border border-white/10 rounded-2xl p-5">
+              <p className="text-gray-500 text-sm">AI Provider</p>
 
-              <p
-                className="
-                text-xl
-                font-bold
-                mt-2
-                "
-              >
-                Gemini
-              </p>
+              <p className="text-xl font-bold mt-2">Gemini</p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-green-500/20
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-green-400
-                text-sm
-                "
-              >
-                Active Requests
-              </p>
+            <div className="bg-black border border-green-500/20 rounded-2xl p-5">
+              <p className="text-green-400 text-sm">Active Requests</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
+              <p className="text-3xl font-bold mt-2">
                 {aiRequestState.activeRequests}
               </p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-yellow-500/20
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-yellow-400
-                text-sm
-                "
-              >
-                Queued
-              </p>
+            <div className="bg-black border border-yellow-500/20 rounded-2xl p-5">
+              <p className="text-yellow-400 text-sm">Queued</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
+              <p className="text-3xl font-bold mt-2">
                 {aiRequestState.queuedRequests}
               </p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-red-500/20
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-red-400
-                text-sm
-                "
-              >
-                Failed
-              </p>
+            <div className="bg-black border border-red-500/20 rounded-2xl p-5">
+              <p className="text-red-400 text-sm">Failed</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
+              <p className="text-3xl font-bold mt-2">
                 {aiRequestState.failedRequests}
               </p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-white/10
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-gray-500
-                text-sm
-                "
-              >
-                Next Retry
-              </p>
+            <div className="bg-black border border-white/10 rounded-2xl p-5">
+              <p className="text-gray-500 text-sm">Next Retry</p>
 
-              <p
-                className="
-                text-xl
-                font-bold
-                mt-2
-                "
-              >
+              <p className="text-xl font-bold mt-2">
                 {getRetryText(aiRequestState.retryAt)}
               </p>
             </div>
           </div>
 
           {aiRequestState.lastError && (
-            <div
-              className="
-              mt-5
-              bg-black
-              border
-              border-white/10
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-xs
-                uppercase
-                tracking-widest
-                text-gray-600
-                "
-              >
+            <div className="mt-5 bg-black border border-white/10 rounded-2xl p-5">
+              <p className="text-xs uppercase tracking-widest text-gray-600">
                 Last AI Event
               </p>
 
-              <p
-                className="
-                text-gray-400
-                text-sm
-                leading-6
-                mt-2
-                break-words
-                "
-              >
+              <p className="text-gray-400 text-sm leading-6 mt-2 break-words">
                 {aiRequestState.lastError}
               </p>
             </div>
@@ -597,359 +340,97 @@ export default function HQClient() {
 
         {/* LIVE OPERATIONS */}
 
-        <section
-          className="
-          mb-8
-          bg-[#080808]
-          border
-          border-white/10
-          rounded-3xl
-          p-8
-          "
-        >
-          <div
-            className="
-            flex
-            items-start
-            justify-between
-            gap-5
-            flex-wrap
-            "
-          >
+        <section className="mb-8 bg-[#080808] border border-white/10 rounded-3xl p-8">
+          <div className="flex items-start justify-between gap-5 flex-wrap">
             <div>
-              <p
-                className="
-                text-xs
-                uppercase
-                tracking-widest
-                text-gray-600
-                "
-              >
-                Live Operations
+              <p className="text-xs uppercase tracking-widest text-gray-600">
+                Live MPA Operations
               </p>
 
-              <h2
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                🛰️ AI Company Status
-              </h2>
+              <h2 className="text-3xl font-bold mt-2">🛰️ MPA AI Workforce</h2>
 
-              <p
-                className="
-                text-gray-500
-                mt-2
-                "
-              >
-                Current employee state based on real mission tasks.
+              <p className="text-gray-500 mt-2">
+                Current agent status based on real MPA mission tasks.
               </p>
             </div>
 
-            <div
-              className="
-              px-4
-              py-2
-              rounded-full
-              border
-              border-green-500/20
-              bg-green-500/10
-              text-green-400
-              text-sm
-              "
-            >
-              ● HQ Online
+            <div className="px-4 py-2 rounded-full border border-green-500/20 bg-green-500/10 text-green-400 text-sm">
+              ● MPA AI Online
             </div>
           </div>
 
-          <div
-            className="
-            grid
-            sm:grid-cols-2
-            lg:grid-cols-5
-            gap-4
-            mt-8
-            "
-          >
-            <div
-              className="
-              bg-black
-              border
-              border-white/10
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-gray-500
-                text-sm
-                "
-              >
-                AI Employees
-              </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-8">
+            <div className="bg-black border border-white/10 rounded-2xl p-5">
+              <p className="text-gray-500 text-sm">AI Agents</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                {agents.length}
-              </p>
+              <p className="text-3xl font-bold mt-2">{agents.length}</p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-green-500/20
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-green-400
-                text-sm
-                "
-              >
-                Working
-              </p>
+            <div className="bg-black border border-green-500/20 rounded-2xl p-5">
+              <p className="text-green-400 text-sm">Working</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                {workingAgents}
-              </p>
+              <p className="text-3xl font-bold mt-2">{workingAgents}</p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-blue-500/20
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-blue-400
-                text-sm
-                "
-              >
-                Assigned
-              </p>
+            <div className="bg-black border border-blue-500/20 rounded-2xl p-5">
+              <p className="text-blue-400 text-sm">Assigned</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                {assignedAgents}
-              </p>
+              <p className="text-3xl font-bold mt-2">{assignedAgents}</p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-yellow-500/20
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-yellow-400
-                text-sm
-                "
-              >
-                Waiting
-              </p>
+            <div className="bg-black border border-yellow-500/20 rounded-2xl p-5">
+              <p className="text-yellow-400 text-sm">Waiting</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                {waitingAgents}
-              </p>
+              <p className="text-3xl font-bold mt-2">{waitingAgents}</p>
             </div>
 
-            <div
-              className="
-              bg-black
-              border
-              border-white/10
-              rounded-2xl
-              p-5
-              "
-            >
-              <p
-                className="
-                text-gray-500
-                text-sm
-                "
-              >
-                Idle
-              </p>
+            <div className="bg-black border border-white/10 rounded-2xl p-5">
+              <p className="text-gray-500 text-sm">Idle</p>
 
-              <p
-                className="
-                text-3xl
-                font-bold
-                mt-2
-                "
-              >
-                {idleAgents}
-              </p>
+              <p className="text-3xl font-bold mt-2">{idleAgents}</p>
             </div>
           </div>
         </section>
 
-        {/* AI CORE */}
+        {/* MPA AI CORE */}
 
-        <Link
-          href="/core"
-          className="
-          block
-          mb-8
-          "
-        >
-          <div
-            className="
-            bg-[#080808]
-            border
-            border-white/10
-            rounded-3xl
-            p-10
-            text-center
-            hover:border-white/40
-            transition
-            "
-          >
-            <div
-              className="
-              text-7xl
-              "
-            >
-              🧠
-            </div>
+        <Link href="/core" className="block mb-8">
+          <div className="bg-[#080808] border border-white/10 rounded-3xl p-10 text-center hover:border-white/40 transition">
+            <div className="text-7xl">🧠</div>
 
-            <h2
-              className="
-              text-4xl
-              font-bold
-              mt-5
-              "
-            >
-              AI CORE
-            </h2>
+            <h2 className="text-4xl font-bold mt-5">MPA AI CORE</h2>
 
-            <p
-              className="
-              text-gray-500
-              mt-3
-              "
-            >
-              Central Brain Meeting Room
+            <p className="text-gray-500 mt-3">
+              Operations Intelligence & Coordination
             </p>
           </div>
         </Link>
 
         {/* MISSION CONTROL */}
 
-        <Link
-          href="/missions"
-          className="
-          block
-          mb-14
-          "
-        >
-          <div
-            className="
-            bg-[#080808]
-            border
-            border-white/10
-            rounded-3xl
-            p-8
-            hover:border-white/40
-            transition
-            "
-          >
-            <h2
-              className="
-              text-3xl
-              font-bold
-              "
-            >
-              📋 Mission Control
-            </h2>
+        <Link href="/missions" className="block mb-14">
+          <div className="bg-[#080808] border border-white/10 rounded-3xl p-8 hover:border-white/40 transition">
+            <h2 className="text-3xl font-bold">📋 MPA Mission Control</h2>
 
-            <p
-              className="
-              text-gray-500
-              mt-2
-              "
-            >
-              Assign missions and manage AI employees
+            <p className="text-gray-500 mt-2">
+              Assign work, coordinate agents and manage MPA AI operations.
             </p>
           </div>
         </Link>
 
-        {/* DEPARTMENTS */}
+        {/* AI TEAM */}
 
-        <div
-          className="
-          flex
-          items-end
-          justify-between
-          gap-5
-          flex-wrap
-          mb-8
-          "
-        >
+        <div className="flex items-end justify-between gap-5 flex-wrap mb-8">
           <div>
-            <h2
-              className="
-              text-4xl
-              font-bold
-              "
-            >
-              AI Departments
-            </h2>
+            <h2 className="text-4xl font-bold">MPA AI Team</h2>
 
-            <p
-              className="
-              text-gray-500
-              mt-2
-              "
-            >
-              Live status of every AI specialist.
+            <p className="text-gray-500 mt-2">
+              Live status of every MPA AI specialist.
             </p>
           </div>
         </div>
 
-        <div
-          className="
-          grid
-          md:grid-cols-3
-          gap-8
-          "
-        >
+        <div className="grid md:grid-cols-3 gap-8">
           {agents.map((agent) => {
             const status = getAgentOperationalStatus(agent.id, tasks);
 
@@ -960,31 +441,10 @@ export default function HQClient() {
             return (
               <div
                 key={agent.id}
-                className="
-                  bg-[#080808]
-                  border
-                  border-white/10
-                  rounded-3xl
-                  p-8
-                  hover:border-white/30
-                  transition
-                  "
+                className="bg-[#080808] border border-white/10 rounded-3xl p-8 hover:border-white/30 transition"
               >
-                <div
-                  className="
-                    flex
-                    items-start
-                    justify-between
-                    gap-4
-                    "
-                >
-                  <div
-                    className="
-                      text-7xl
-                      "
-                  >
-                    {agent.emoji}
-                  </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="text-7xl">{agent.emoji}</div>
 
                   <div
                     className={`
@@ -997,7 +457,7 @@ export default function HQClient() {
                       border
                       text-xs
                       ${statusClasses.badge}
-                      `}
+                    `}
                   >
                     <span
                       className={`
@@ -1005,80 +465,30 @@ export default function HQClient() {
                         h-2
                         rounded-full
                         ${statusClasses.dot}
-                        `}
+                      `}
                     />
 
                     {status}
                   </div>
                 </div>
 
-                <h3
-                  className="
-                    text-3xl
-                    font-bold
-                    mt-5
-                    "
-                >
-                  {agent.name}
-                </h3>
+                <h3 className="text-3xl font-bold mt-5">{agent.name}</h3>
 
-                <p
-                  className="
-                    text-blue-400
-                    mt-2
-                    "
-                >
-                  {agent.department}
-                </p>
+                <p className="text-blue-400 mt-2">{agent.department}</p>
 
-                <p
-                  className="
-                    text-gray-500
-                    mt-2
-                    "
-                >
-                  {agent.role}
-                </p>
+                <p className="text-gray-500 mt-2">{agent.role}</p>
 
-                <div
-                  className="
-                    mt-6
-                    bg-black
-                    border
-                    border-white/10
-                    rounded-2xl
-                    p-4
-                    "
-                >
-                  <p
-                    className="
-                      text-xs
-                      uppercase
-                      tracking-widest
-                      text-gray-600
-                      "
-                  >
-                    Current Assignment
+                <div className="mt-6 bg-black border border-white/10 rounded-2xl p-4">
+                  <p className="text-xs uppercase tracking-widest text-gray-600">
+                    Current MPA Assignment
                   </p>
 
-                  <p
-                    className="
-                      mt-2
-                      text-sm
-                      leading-6
-                      "
-                  >
+                  <p className="mt-2 text-sm leading-6">
                     {currentTask ? currentTask.title : "No active assignment"}
                   </p>
 
                   {currentTask && (
-                    <p
-                      className="
-                        text-gray-600
-                        text-xs
-                        mt-2
-                        "
-                    >
+                    <p className="text-gray-600 text-xs mt-2">
                       {currentTask.progress}% complete
                     </p>
                   )}
@@ -1086,22 +496,9 @@ export default function HQClient() {
 
                 <Link
                   href={`/agents/${agent.id}`}
-                  className="
-                    inline-block
-                    mt-6
-                    px-5
-                    py-3
-                    bg-black
-                    border
-                    border-white/20
-                    rounded-xl
-                    text-sm
-                    hover:bg-white
-                    hover:text-black
-                    transition
-                    "
+                  className="inline-block mt-6 px-5 py-3 bg-black border border-white/20 rounded-xl text-sm hover:bg-white hover:text-black transition"
                 >
-                  🚪 Enter Room
+                  🚪 Open Agent Workspace
                 </Link>
               </div>
             );
