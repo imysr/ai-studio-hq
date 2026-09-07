@@ -13,14 +13,18 @@ import { loadTasksFromSupabase } from "@/lib/taskStorage";
 import { retryAgentTask } from "@/lib/workEngine";
 import { runAIScheduler } from "@/lib/aiScheduler";
 
+type ArtifactFormat = "pdf" | "docx";
+type VisualArtifactFormat = "png" | "pptx";
+
 export default function MissionDetailClient() {
   const params = useParams();
   const missionId = Number(params.id);
 
   const [mission, setMission] = useState<Mission | null>(null);
   const [tasks, setTasks] = useState<MissionTask[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => Number.isFinite(missionId));
   const [retryingTaskId, setRetryingTaskId] = useState<number | null>(null);
+  const [generatingArtifactKey, setGeneratingArtifactKey] = useState("");
   const [message, setMessage] = useState("");
 
   async function refreshMission() {
@@ -34,15 +38,12 @@ export default function MissionDetailClient() {
     ]);
 
     setMission(loadedMissions.find((item) => item.id === missionId) ?? null);
-
     setTasks(loadedTasks.filter((task) => task.missionId === missionId));
-
     setLoading(false);
   }
 
   useEffect(() => {
     if (!Number.isFinite(missionId)) {
-      setLoading(false);
       return;
     }
 
@@ -59,9 +60,7 @@ export default function MissionDetailClient() {
       }
 
       setMission(loadedMissions.find((item) => item.id === missionId) ?? null);
-
       setTasks(loadedTasks.filter((task) => task.missionId === missionId));
-
       setLoading(false);
     }
 
@@ -123,19 +122,8 @@ export default function MissionDetailClient() {
         return;
       }
 
-      /*
-        A successful retry may unlock one or more
-        dependency tasks. Continue the scheduler
-        immediately instead of requiring /core
-        to be open.
-      */
       await runAIScheduler();
 
-      /*
-        saveTasks() synchronizes to Supabase in
-        the background, so give the API a brief
-        moment before reloading persisted state.
-      */
       await new Promise<void>((resolve) => {
         window.setTimeout(resolve, 700);
       });
@@ -148,6 +136,137 @@ export default function MissionDetailClient() {
       setMessage("Retry failed. Please try again.");
     } finally {
       setRetryingTaskId(null);
+    }
+  }
+
+  async function downloadVisualArtifact({
+    key,
+    format,
+    title,
+    content,
+  }: {
+    key: string;
+    format: VisualArtifactFormat;
+    title: string;
+    content: string;
+  }) {
+    if (generatingArtifactKey) return;
+    const artifactKey = `${key}-${format}`;
+    setGeneratingArtifactKey(artifactKey);
+    setMessage(`Preparing ${format.toUpperCase()} visual deliverable...`);
+    try {
+      const response = await fetch("/api/artifacts/visual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          format,
+          title,
+          content,
+          missionTitle: mission?.title ?? "",
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Visual artifact generation failed.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/i);
+      const name =
+        match?.[1] ?? `${title.replace(/[^a-z0-9]+/gi, "_")}.${format}`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+      setMessage(`${format.toUpperCase()} visual deliverable is ready.`);
+    } catch (error) {
+      console.error("Visual artifact download failed:", error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Visual artifact generation failed.",
+      );
+    } finally {
+      setGeneratingArtifactKey("");
+    }
+  }
+
+  async function downloadArtifact({
+    key,
+    format,
+    title,
+    subtitle,
+    content,
+    author,
+  }: {
+    key: string;
+    format: ArtifactFormat;
+    title: string;
+    subtitle: string;
+    content: string;
+    author: string;
+  }) {
+    if (generatingArtifactKey) {
+      return;
+    }
+
+    const artifactKey = `${key}-${format}`;
+    setGeneratingArtifactKey(artifactKey);
+    setMessage(`Preparing ${format.toUpperCase()} deliverable...`);
+
+    try {
+      const response = await fetch("/api/artifacts/document", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          format,
+          title,
+          subtitle,
+          content,
+          author,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Artifact generation failed.");
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+      const fallbackName = `${title.replace(/[^a-z0-9]+/gi, "_")}.${format}`;
+      const filename = filenameMatch?.[1] ?? fallbackName;
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 1000);
+
+      setMessage(`${format.toUpperCase()} deliverable is ready.`);
+    } catch (error) {
+      console.error("Artifact download failed:", error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Artifact generation failed. Please try again.",
+      );
+    } finally {
+      setGeneratingArtifactKey("");
     }
   }
 
@@ -188,13 +307,11 @@ export default function MissionDetailClient() {
           ← Back to Mission Control
         </Link>
 
-        {/* HEADER */}
-
         <section className="mt-10 bg-[#080808] border border-white/10 rounded-3xl p-10">
           <div className="flex items-start justify-between gap-6 flex-wrap">
             <div className="max-w-3xl">
               <p className="text-purple-400 text-sm uppercase tracking-widest">
-                Mission Detail
+                MPA Mission Detail
               </p>
 
               <h1 className="text-5xl font-bold mt-3">{mission.title}</h1>
@@ -254,8 +371,6 @@ export default function MissionDetailClient() {
           )}
         </section>
 
-        {/* TEAM */}
-
         <section className="mt-8 bg-[#080808] border border-white/10 rounded-3xl p-8">
           <h2 className="text-2xl font-bold">👥 Mission Team</h2>
 
@@ -276,14 +391,12 @@ export default function MissionDetailClient() {
           </div>
         </section>
 
-        {/* TASK WORKFLOW */}
-
         <section className="mt-8 bg-[#080808] border border-white/10 rounded-3xl p-8">
           <h2 className="text-2xl font-bold">📋 Task Workflow</h2>
 
           <p className="text-gray-500 mt-2">
-            Specialist assignments, dependencies, collaboration context,
-            completed work and AI recovery.
+            Specialist assignments, collaboration, completed work and
+            downloadable MPA deliverables.
           </p>
 
           <div className="mt-6 space-y-6">
@@ -302,6 +415,11 @@ export default function MissionDetailClient() {
 
               const retryAvailable =
                 task.status === "Working" && task.progress === 75;
+
+              const taskArtifactKey = `task-${task.id}`;
+              const taskAuthor = assignedAgent
+                ? `${assignedAgent.name} — ${assignedAgent.role}`
+                : "MPA AI Agent";
 
               return (
                 <article
@@ -444,15 +562,124 @@ export default function MissionDetailClient() {
                   )}
 
                   {task.status === "Completed" && task.result && (
-                    <details className="mt-6 bg-[#080808] border border-white/10 rounded-xl">
-                      <summary className="cursor-pointer p-5 font-semibold hover:bg-white/[0.02]">
-                        📄 View Work Result
-                      </summary>
+                    <>
+                      <div className="mt-6 border border-green-500/20 bg-green-500/[0.06] rounded-2xl p-5">
+                        <div className="flex items-start justify-between gap-4 flex-wrap">
+                          <div>
+                            <p className="text-xs uppercase tracking-widest text-green-400">
+                              {assignedAgent?.name === "Pixel"
+                                ? "Visual Deliverables"
+                                : "MPA Deliverables"}
+                            </p>
+                            <h4 className="font-bold mt-2">
+                              {assignedAgent?.name === "Pixel"
+                                ? "Finished creative + editable source"
+                                : "Download this completed work"}
+                            </h4>
+                            <p className="text-gray-500 text-sm mt-1">
+                              {assignedAgent?.name === "Pixel"
+                                ? "PNG is ready to view/post. PPTX is editable in PowerPoint."
+                                : "PDF for sharing/printing or editable Word for corrections."}
+                            </p>
+                          </div>
+                          <div className="flex gap-3 flex-wrap">
+                            {assignedAgent?.name === "Pixel" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(generatingArtifactKey)}
+                                  onClick={() =>
+                                    void downloadVisualArtifact({
+                                      key: taskArtifactKey,
+                                      format: "png",
+                                      title: task.title,
+                                      content: task.result ?? "",
+                                    })
+                                  }
+                                  className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+                                >
+                                  {generatingArtifactKey ===
+                                  `${taskArtifactKey}-png`
+                                    ? "Preparing PNG..."
+                                    : "🖼️ Download Finished PNG"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(generatingArtifactKey)}
+                                  onClick={() =>
+                                    void downloadVisualArtifact({
+                                      key: taskArtifactKey,
+                                      format: "pptx",
+                                      title: task.title,
+                                      content: task.result ?? "",
+                                    })
+                                  }
+                                  className="px-4 py-2 rounded-xl border border-white/15 bg-black text-white text-sm font-semibold disabled:opacity-50"
+                                >
+                                  {generatingArtifactKey ===
+                                  `${taskArtifactKey}-pptx`
+                                    ? "Preparing PowerPoint..."
+                                    : "✏️ Download Editable PPTX"}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(generatingArtifactKey)}
+                                  onClick={() =>
+                                    void downloadArtifact({
+                                      key: taskArtifactKey,
+                                      format: "pdf",
+                                      title: task.title,
+                                      subtitle: `${mission.title} • ${assignedAgent?.name ?? "MPA AI Agent"}`,
+                                      content: task.result ?? "",
+                                      author: taskAuthor,
+                                    })
+                                  }
+                                  className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+                                >
+                                  {generatingArtifactKey ===
+                                  `${taskArtifactKey}-pdf`
+                                    ? "Preparing PDF..."
+                                    : "📄 Download PDF"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(generatingArtifactKey)}
+                                  onClick={() =>
+                                    void downloadArtifact({
+                                      key: taskArtifactKey,
+                                      format: "docx",
+                                      title: task.title,
+                                      subtitle: `${mission.title} • ${assignedAgent?.name ?? "MPA AI Agent"}`,
+                                      content: task.result ?? "",
+                                      author: taskAuthor,
+                                    })
+                                  }
+                                  className="px-4 py-2 rounded-xl border border-white/15 bg-black text-white text-sm font-semibold disabled:opacity-50"
+                                >
+                                  {generatingArtifactKey ===
+                                  `${taskArtifactKey}-docx`
+                                    ? "Preparing Word..."
+                                    : "📝 Download Editable DOCX"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-                      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-300 leading-7 p-5 border-t border-white/10">
-                        {task.result}
-                      </pre>
-                    </details>
+                      <details className="mt-4 bg-[#080808] border border-white/10 rounded-xl">
+                        <summary className="cursor-pointer p-5 font-semibold hover:bg-white/[0.02]">
+                          👁️ View Work Result
+                        </summary>
+
+                        <pre className="whitespace-pre-wrap font-sans text-sm text-gray-300 leading-7 p-5 border-t border-white/10">
+                          {task.result}
+                        </pre>
+                      </details>
+                    </>
                   )}
                 </article>
               );
@@ -463,8 +690,6 @@ export default function MissionDetailClient() {
             )}
           </div>
         </section>
-
-        {/* FINAL DELIVERABLE */}
 
         {mission.finalDeliverable && (
           <section className="mt-8 bg-[#080808] border border-purple-500/30 rounded-3xl p-8">
@@ -488,6 +713,54 @@ export default function MissionDetailClient() {
                 {new Date(mission.finalDeliverableCreatedAt).toLocaleString()}
               </p>
             )}
+
+            <div className="mt-6 border border-purple-500/20 bg-purple-500/[0.05] rounded-2xl p-5">
+              <p className="text-xs uppercase tracking-widest text-purple-300">
+                Final MPA Documents
+              </p>
+
+              <div className="flex gap-3 flex-wrap mt-4">
+                <button
+                  type="button"
+                  disabled={Boolean(generatingArtifactKey)}
+                  onClick={() => {
+                    void downloadArtifact({
+                      key: "final",
+                      format: "pdf",
+                      title: `${mission.title} - Final Deliverable`,
+                      subtitle: "Final MPA Mission Deliverable",
+                      content: mission.finalDeliverable ?? "",
+                      author: "Valid — MPA Operations Manager",
+                    });
+                  }}
+                  className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {generatingArtifactKey === "final-pdf"
+                    ? "Preparing PDF..."
+                    : "📄 Download Final PDF"}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={Boolean(generatingArtifactKey)}
+                  onClick={() => {
+                    void downloadArtifact({
+                      key: "final",
+                      format: "docx",
+                      title: `${mission.title} - Final Deliverable`,
+                      subtitle: "Final MPA Mission Deliverable",
+                      content: mission.finalDeliverable ?? "",
+                      author: "Valid — MPA Operations Manager",
+                    });
+                  }}
+                  className="px-4 py-2 rounded-xl border border-white/15 bg-black text-white text-sm font-semibold hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {generatingArtifactKey === "final-docx"
+                    ? "Preparing Word..."
+                    : "📝 Download Final DOCX"}
+                </button>
+              </div>
+            </div>
 
             <pre className="whitespace-pre-wrap font-sans text-sm text-gray-300 leading-7 mt-6">
               {mission.finalDeliverable}
