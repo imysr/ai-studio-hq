@@ -14,139 +14,97 @@ export type Agent = {
 export const agents: Agent[] = [
   {
     id: 1,
-
     name: "Valid",
-
     emoji: "🧑‍💼",
-
-    role: "CEO Assistant",
-
-    department: "CEO Office",
-
+    role: "MPA Operations Manager",
+    department: "Operations Office",
     status: "Idle",
-
     energy: 100,
-
     description:
-      "Manages projects, coordinates AI workers, and helps make strategic decisions.",
-
-    personality: "Calm, organised, strategic, and responsible.",
-
-    activity: "Reviewing company operations and waiting for CEO instructions.",
+      "Coordinates MPA operations, assigns work to the AI team, reviews deliverables, and prepares management summaries.",
+    personality:
+      "Calm, organised, strategic, responsible, and focused on keeping MPA operations moving.",
+    activity:
+      "Reviewing MPA operations and waiting for the next mission.",
   },
 
   {
     id: 2,
-
     name: "CodeBot",
-
     emoji: "💻",
-
-    role: "Software Engineer",
-
-    department: "Development Lab",
-
+    role: "LMS & Automation Developer",
+    department: "Technology Lab",
     status: "Idle",
-
     energy: 100,
-
     description:
-      "Builds websites, applications, databases, and solves technical problems.",
-
-    personality: "Logical, creative, and focused on solving complex problems.",
-
-    activity: "Maintaining systems and preparing development tools.",
+      "Supports MPA's learning portal, websites, databases, technical systems, and business automation.",
+    personality:
+      "Logical, practical, detail-oriented, and focused on reliable technical solutions.",
+    activity:
+      "Monitoring MPA technology and preparing development solutions.",
   },
 
   {
     id: 3,
-
     name: "Pixel",
-
     emoji: "🎨",
-
-    role: "UI/UX Designer",
-
-    department: "Design Studio",
-
+    role: "Creative & Content Designer",
+    department: "Creative Studio",
     status: "Idle",
-
     energy: 100,
-
     description:
-      "Creates interfaces, prototypes, branding, and visual experiences.",
-
-    personality: "Creative, artistic, and obsessed with user experience.",
-
-    activity: "Creating design concepts and improving visual identity.",
+      "Develops MPA marketing concepts, social media content, campaign visuals, landing-page ideas, and creative briefs.",
+    personality:
+      "Creative, audience-focused, visually minded, and attentive to MPA's professional brand.",
+    activity:
+      "Preparing creative concepts and marketing content for MPA.",
   },
 
   {
     id: 4,
-
     name: "Sage",
-
     emoji: "📚",
-
-    role: "Learning Instructor",
-
+    role: "Curriculum & Learning Specialist",
     department: "Learning Academy",
-
     status: "Idle",
-
     energy: 100,
-
     description:
-      "Teaches programming, AI, technology, and educational content.",
-
-    personality: "Patient, knowledgeable, and loves helping others learn.",
-
-    activity: "Preparing lessons and educational materials.",
+      "Develops MPA course structures, learning outcomes, lessons, quizzes, assessments, exercises, and educational materials.",
+    personality:
+      "Patient, knowledgeable, structured, educational, and focused on practical learning outcomes.",
+    activity:
+      "Developing course and training materials for MPA.",
   },
 
   {
     id: 5,
-
     name: "Atlas",
-
     emoji: "📊",
-
-    role: "Business Analyst",
-
-    department: "Business Room",
-
+    role: "Marketing & Business Strategist",
+    department: "Strategy Room",
     status: "Idle",
-
     energy: 100,
-
     description:
-      "Studies business ideas, strategies, market opportunities, and growth.",
-
-    personality: "Analytical, realistic, and data-driven.",
-
-    activity: "Analysing trends and planning business strategies.",
+      "Plans MPA marketing campaigns, studies target audiences, develops business strategies, and identifies opportunities for course growth.",
+    personality:
+      "Analytical, commercially aware, realistic, strategic, and data-driven.",
+    activity:
+      "Analysing MPA marketing opportunities and business growth.",
   },
 
   {
     id: 6,
-
     name: "Forge",
-
-    emoji: "🎮",
-
-    role: "Game Developer",
-
-    department: "Game Studio",
-
+    emoji: "📱",
+    role: "Content & Engagement Specialist",
+    department: "Content Studio",
     status: "Idle",
-
     energy: 100,
-
     description:
-      "Creates games using Godot, Unity, Unreal Engine, and HyperPad.",
-
-    personality: "Inventive, experimental, and passionate about game creation.",
-
-    activity: "Designing game mechanics and testing ideas.",
+      "Creates social media ideas, Reel and TikTok concepts, engagement activities, campaign hooks, and practical content for MPA audiences.",
+    personality:
+      "Energetic, inventive, audience-aware, experimental, and focused on engagement.",
+    activity:
+      "Creating engagement ideas and social content for MPA.",
   },
 ];
